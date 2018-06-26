@@ -79,6 +79,7 @@ getElementwiseStats = function(screens, normNBSummaries, elementIDs, ntSampleFol
   uGuideLens = sort(unique(elementwiseStats$numGuides))
   zScales = data.frame();
   #build background
+  message(sprintf("Building background with %i non-targeting guides", sum(normNBSummaries$NT)))
   ntData = normNBSummaries[normNBSummaries$NT,]
   ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
   for(i in uGuideLens){
