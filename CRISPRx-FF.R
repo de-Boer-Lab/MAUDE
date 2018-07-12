@@ -72,7 +72,7 @@ checkUsage(findGuideHits)
 getElementwiseStats = function(screens, normNBSummaries, elementIDs, ntSampleFold = 10, tails="both"){
   screens = unique(screens);
   mergeBy = names(screens);
-  elementwiseStats = cast(normNBSummaries, as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
+  elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
   #calibrate Z scores
