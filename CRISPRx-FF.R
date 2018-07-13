@@ -43,6 +43,9 @@ checkUsage(makeBinModel)
 
 findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean){
   allBins = c("A","B","C","D","E","F")
+  #for(b in allBins){
+  #  countTable[b]=countTable[b]+round(pseudocount*sum(countTable);#add a pseudocount
+  #}
   countTable[allBins]=countTable[allBins]+pseudocount;#add a pseudocount
   countTable["NS"]=countTable["NS"]+pseudocount;
   curNormNBSummaries = countTable
@@ -124,15 +127,18 @@ findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
       stop("No 'Bin' column in binStats!")
     }
   }
+  if (!"frequency" %in% names(binStats)){
+    stop("No 'frequency' column in binStats!")
+  }
   if (!all(c("A","B","C","D","E","F","NS") %in% names(countDataFrame))){
     stop("Not all bins (A-F, NS) present in countDataFrame!")
   }
   screens = unique(screens);
   mergeBy = names(screens);
-  if (!all(mergeBy %in% countDataFrame)){
+  if (!all(mergeBy %in% names(countDataFrame))){
     stop("Columns from 'screens' missing from 'countDataFrame'");
   }
-  if (!all(mergeBy %in% binStats)){
+  if (!all(mergeBy %in% names(binStats))){
     stop("Columns from 'screens' missing from 'binStats'");
   }
   screens[ncol(screens)+1]=1:nrow(screens);
