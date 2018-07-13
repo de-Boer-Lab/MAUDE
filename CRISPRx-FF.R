@@ -23,13 +23,13 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 checkUsage(getNBGaussianLikelihood)
 
 makeBinModel = function(curBinBounds,tailP=0.001){
-  curBinBounds$binStartQ[curBinBounds$Bin=="A"]=0.001 #A
+  curBinBounds$binStartQ[curBinBounds$Bin=="A"]=tailP #A
   curBinBounds$binEndQ[curBinBounds$Bin=="A"] = curBinBounds$binStartQ[curBinBounds$Bin=="A"] + curBinBounds$fraction[curBinBounds$Bin=="A"];
   curBinBounds$binStartQ[curBinBounds$Bin=="B"] = curBinBounds$binEndQ[curBinBounds$Bin=="A"]; #B
   curBinBounds$binEndQ[curBinBounds$Bin=="B"] = curBinBounds$binStartQ[curBinBounds$Bin=="B"] + curBinBounds$fraction[curBinBounds$Bin=="B"];
   curBinBounds$binStartQ[curBinBounds$Bin=="C"] = curBinBounds$binEndQ[curBinBounds$Bin=="B"]; #C
   curBinBounds$binEndQ[curBinBounds$Bin=="C"] = curBinBounds$binStartQ[curBinBounds$Bin=="C"] + curBinBounds$fraction[curBinBounds$Bin=="C"];
-  curBinBounds$binEndQ[curBinBounds$Bin=="F"]=1-0.001 # F
+  curBinBounds$binEndQ[curBinBounds$Bin=="F"]=1-tailP # F
   curBinBounds$binStartQ[curBinBounds$Bin=="F"] = curBinBounds$binEndQ[curBinBounds$Bin=="F"] - curBinBounds$fraction[curBinBounds$Bin=="F"];
   curBinBounds$binEndQ[curBinBounds$Bin=="E"] = curBinBounds$binStartQ[curBinBounds$Bin=="F"]; #E
   curBinBounds$binStartQ[curBinBounds$Bin=="E"] = curBinBounds$binEndQ[curBinBounds$Bin=="E"] - curBinBounds$fraction[curBinBounds$Bin=="E"];
