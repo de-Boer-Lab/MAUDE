@@ -116,8 +116,25 @@ getElementwiseStats = function(screens, normNBSummaries, elementIDs, ntSampleFol
 checkUsage(getElementwiseStats)
 
 findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
+  if (!"Bin" %in% names(binStats)){
+    if (!"bin" %in% names(binStats)){
+      warning("'Bin' column not found in binStats; using 'bin' instead")
+      binStats$Bin = binStats$bin;
+    }else{
+      stop("No 'Bin' column in binStats!")
+    }
+  }
+  if (!all(c("A","B","C","D","E","F","NS") %in% names(countDataFrame))){
+    stop("Not all bins (A-F, NS) present in countDataFrame!")
+  }
   screens = unique(screens);
   mergeBy = names(screens);
+  if (!all(mergeBy %in% countDataFrame)){
+    stop("Columns from 'screens' missing from 'countDataFrame'");
+  }
+  if (!all(mergeBy %in% binStats)){
+    stop("Columns from 'screens' missing from 'binStats'");
+  }
   screens[ncol(screens)+1]=1:nrow(screens);
   idCol = names(screens)[ncol(screens)];
   countDataFrame = merge(countDataFrame, screens, by=mergeBy);
