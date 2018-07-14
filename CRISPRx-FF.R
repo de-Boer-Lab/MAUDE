@@ -74,18 +74,106 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 }
 checkUsage(findGuideHits)
 
-getElementwiseStats = function(screens, normNBSummaries, elementIDs, ntSampleFold = 10, tails="both"){
+getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, ...){
+  if(!location %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries", location))
+  }
+  if(!"Z" %in% names(normNBSummaries)){
+    stop(sprintf("Column 'Z' is missing from normNBSummaries"))
+  }
+  if(!chr %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries", chr))
+  }
   screens = unique(screens);
   mergeBy = names(screens);
-  elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
+  ntData = normNBSummaries[normNBSummaries$NT,]
+  normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
+  elementwiseStats = data.frame();
+  for (i in 1:nrow(screens)){
+    #message(i)
+    for (curChr in unique(normNBSummaries[[chr]])){
+      #message(curChr)
+      curData = merge(screens[i,],normNBSummaries[normNBSummaries[[chr]]==curChr,])
+      curData = curData[order(curData[location]),]
+      lagging=1
+      leading=1
+      while (leading <=nrow(curData)){
+        #message(names(curData))
+        #message(window)
+        #message(head(curData[[location]]))
+        while (curData[[location]][lagging] + window < curData[[location]][leading]){
+          lagging = lagging +1;
+        }
+        while (leading+1 <=nrow(curData) && curData[[location]][lagging] + window >= curData[[location]][leading+1]){
+          leading = leading +1;
+        }
+        #message(sprintf("%i:%i %s:%i-%i",lagging,leading, curChr, curData[[location]][lagging], curData[[location]][leading]))
+        if (leading-lagging +1 >= minGuides){
+          elementwiseStats = rbind(elementwiseStats, data.frame(screens[i,], chr = curChr, start = curData[[location]][lagging], end = curData[[location]][leading], numGuides = leading-lagging+1, stoufferZ=combineZStouffer(curData$Z[lagging:leading]), meanZ=mean(curData$Z[lagging:leading])))
+        }
+        leading = leading + 1;
+      }
+    }
+  }
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
   #calibrate Z scores
   uGuideLens = sort(unique(elementwiseStats$numGuides))
   zScales = data.frame();
   #build background
-  message(sprintf("Building background with %i non-targeting guides", sum(normNBSummaries$NT)))
+  zScales = getZScalesWithNTGuides(ntData,uGuideLens, mergeBy, ...)
+  message(paste(names(zScales), collapse=", "))
+  message(paste(names(elementwiseStats), collapse=", "))
+  elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
+  elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
+  if (tails=="both" || tails =="lower"){
+    elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
+  }
+  if (tails=="both"){
+    elementwiseStats$p.value[elementwiseStats$rescaledZ>0] = pnorm(-elementwiseStats$rescaledZ[elementwiseStats$rescaledZ>0])
+  }
+  if (tails=="upper"){
+    elementwiseStats$p.value = pnorm(-elementwiseStats$rescaledZ)
+  }
+  elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
+  elementwiseStats$Zscale=NULL
+  return(elementwiseStats);
+}
+checkUsage(getTilingElementwiseStats)
+
+
+getElementwiseStats = function(screens, normNBSummaries, elementIDs, tails="both",...){
+  screens = unique(screens);
+  mergeBy = names(screens);
   ntData = normNBSummaries[normNBSummaries$NT,]
+  normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
+  elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
+  elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
+  #head(elementwiseStats)
+  #calibrate Z scores
+  uGuideLens = sort(unique(elementwiseStats$numGuides))
+  #build background
+  zScales = getZScalesWithNTGuides(ntData,uGuideLens, mergeBy, ...)
+  elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
+  elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
+  if (tails=="both" || tails =="lower"){
+    elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
+  }
+  if (tails=="both"){
+    elementwiseStats$p.value[elementwiseStats$rescaledZ>0] = pnorm(-elementwiseStats$rescaledZ[elementwiseStats$rescaledZ>0])
+  }
+  if (tails=="upper"){
+    elementwiseStats$p.value = pnorm(-elementwiseStats$rescaledZ)
+  }
+  elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
+  elementwiseStats$Zscale=NULL
+  return(elementwiseStats);
+}
+checkUsage(getElementwiseStats)
+
+
+getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
+  message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
   ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
   for(i in uGuideLens){
     ntData = ntData[order(runif(nrow(ntData))),]
@@ -103,22 +191,9 @@ getElementwiseStats = function(screens, normNBSummaries, elementIDs, ntSampleFol
     #message(str(ntStats))
     zScales = rbind(zScales, ntStats)
   }
-  elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
-  elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
-  if (tails=="both" || tails =="lower"){
-    elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
-  }
-  if (tails=="both"){
-    elementwiseStats$p.value[elementwiseStats$rescaledZ>0] = pnorm(-elementwiseStats$rescaledZ[elementwiseStats$rescaledZ>0])
-  }
-  if (tails=="upper"){
-    elementwiseStats$p.value = pnorm(-elementwiseStats$rescaledZ)
-  }
-  elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
-  elementwiseStats$Zscale=NULL
-  return(elementwiseStats);
+  return(zScales)
 }
-checkUsage(getElementwiseStats)
+checkUsage(getZScalesWithNTGuides)
 
 findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
   if (!"Bin" %in% names(binStats)){
