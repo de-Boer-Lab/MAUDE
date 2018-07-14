@@ -122,8 +122,6 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
   zScales = data.frame();
   #build background
   zScales = getZScalesWithNTGuides(ntData,uGuideLens, mergeBy, ...)
-  message(paste(names(zScales), collapse=", "))
-  message(paste(names(elementwiseStats), collapse=", "))
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
   elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
