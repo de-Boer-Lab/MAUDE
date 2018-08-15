@@ -140,6 +140,29 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
 checkUsage(getTilingElementwiseStats)
 
 
+getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
+  message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
+  ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
+  for(i in uGuideLens){
+    ntData = ntData[order(runif(nrow(ntData))),]
+    for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
+    ntData$groupID = floor((0:(nrow(ntData)-1))/i)
+    message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
+    #message(str(ntData))
+    ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
+    #message(str(ntStats))
+    ntStats = ntStats[ntStats$numGuides==i,]
+    #message(str(ntStats))
+    ntStats = as.data.frame(cast(ntStats, as.formula(sprintf("%s ~ .", paste(mergeBy, collapse = " + "))), value="stoufferZ",fun.aggregate = function(x){sd(x,na.rm=T)}))
+    names(ntStats)[ncol(ntStats)]="Zscale"
+    ntStats$numGuides=i;
+    #message(str(ntStats))
+    zScales = rbind(zScales, ntStats)
+  }
+  return(zScales)
+}
+checkUsage(getZScalesWithNTGuides)
+
 getElementwiseStats = function(screens, normNBSummaries, elementIDs, tails="both",...){
   screens = unique(screens);
   mergeBy = names(screens);
@@ -169,29 +192,6 @@ getElementwiseStats = function(screens, normNBSummaries, elementIDs, tails="both
 }
 checkUsage(getElementwiseStats)
 
-
-getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
-  message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
-  ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
-  for(i in uGuideLens){
-    ntData = ntData[order(runif(nrow(ntData))),]
-    for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
-    ntData$groupID = floor((0:(nrow(ntData)-1))/i)
-    message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
-    #message(str(ntData))
-    ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
-    #message(str(ntStats))
-    ntStats = ntStats[ntStats$numGuides==i,]
-    #message(str(ntStats))
-    ntStats = as.data.frame(cast(ntStats, as.formula(sprintf("%s ~ .", paste(mergeBy, collapse = " + "))), value="stoufferZ",fun.aggregate = function(x){sd(x,na.rm=T)}))
-    names(ntStats)[ncol(ntStats)]="Zscale"
-    ntStats$numGuides=i;
-    #message(str(ntStats))
-    zScales = rbind(zScales, ntStats)
-  }
-  return(zScales)
-}
-checkUsage(getZScalesWithNTGuides)
 
 findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
   if (!"Bin" %in% names(binStats)){
