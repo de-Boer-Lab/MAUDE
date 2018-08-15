@@ -78,6 +78,7 @@ checkUsage(findGuideHits)
 getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
   message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
   ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
+  zScales = data.frame();
   for(i in uGuideLens){
     ntData = ntData[order(runif(nrow(ntData))),]
     for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
