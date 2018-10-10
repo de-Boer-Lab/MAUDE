@@ -51,7 +51,7 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     countTable["NS"]=countTable["NS"]+pseudocount;
   }
   curNormNBSummaries = countTable
-  allDataCounts$libFraction = allDataCounts$NS/sum(allDataCounts$NS,na.rm=T)
+  countTable$libFraction = countTable$NS/sum(countTable$NS,na.rm=T)
   
   curNormNBSummaries$libFraction = curNormNBSummaries$NS/sum(curNormNBSummaries$NS,na.rm=T)
   binCounts = apply(curNormNBSummaries[allBins],2,function(x){sum(x, na.rm = T)})
