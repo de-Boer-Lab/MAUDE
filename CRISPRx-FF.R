@@ -1,6 +1,9 @@
 
 library(codetools)
 
+
+combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
+
 getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   #x= vector of guide counts per bin
   #mu = mean of distribution
