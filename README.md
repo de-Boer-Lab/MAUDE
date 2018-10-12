@@ -30,7 +30,7 @@ The following is an example that relies on simulated data and makes use of the `
 
 Load the required packages and set the seed.  You only need to set the seed if you want your analysis to get exactly the same results as what is shown here.  Otherwise, you can skip this step (and note that if you run things in a different order, the results may differ).
 ```R
-library("ggplot2")
+library(ggplot2)
 library(reshape)
 library(MAUDE)
 
@@ -40,7 +40,7 @@ set.seed(76484377)
 Set up the simulation.  Here, we're using 5 guides per element, and 200 elements, 100 of which have no effect on expression.  The half that affect expression have effect sizes ranging from 0.01 to 1 standard deviations.  We also include 1000 non-targeting guides.
 ```R
 #ground truth
-groundTruth = data.frame(element = 1:200, meanEffect = c((1:100)/100,rep(0,100))) #targeting 200 element, half of which do nothing
+groundTruth = data.frame(element = 1:200, meanEffect = c((1:100)/100,rep(0,100))) #targeting 200 elements, half of which do nothing
 
 #guide - element map; 5 guides per element; gid is the guide ID
 guideMap = data.frame(element = rep(groundTruth$element, 5), gid = 1:(5*nrow(groundTruth)), NT=F, mean=rep(groundTruth$meanEffect, 5))
