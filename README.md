@@ -2,6 +2,10 @@
 
 MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin. The documentation and examples are written with this usage in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. See 'Usage' below for more information.
 
+
+<img src="images/logo2.png" alt="Maude Flanders" width="400"/>
+
+
 # R Installation
 
 If you don't already have `devtools`, install it:
