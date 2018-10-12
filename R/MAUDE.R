@@ -6,6 +6,7 @@
 #' This function takes a vector of Z-scores and combines them into a single Z-score using Stouffer's method.
 #' @param x a vector of Z-scores to be combined
 #' @return Returns a single Z-score.
+#' @export
 #' @examples
 #' combineZStouffer(rnorm(10))
 combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
@@ -20,6 +21,7 @@ combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
 #' @param nullModel the bin bounds for the null model (for no change in expression)
 #' @param libFract the fraction of the unsorted library this guide comprises (e.g. from unsorted cells, or sequencing the vector)
 #' @return the log likelihood
+#' @export
 #' @examples
 #' #usually not used directly
 getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
@@ -48,6 +50,7 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 #' @param curBinBounds  a data.frame containing three columns: Bin {A,B,C,D,E,F}, and fraction (the fractions of the total captured by each bin)
 #' @param tailP the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)
 #' @return returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
+#' @export
 #' @examples
 #' binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data
 #' p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
@@ -78,6 +81,7 @@ makeBinModel = function(curBinBounds,tailP=0.001){
 #' @param pseudocount the count to be added to each bin count, per 1e6 reads/bin total (default=10 pseudo reads per 1e6 reads total)
 #' @param meanFunction how to calculate the mean of the non-targeting guides for centering Z-scores.  Defaults to 'mean'
 #' @return a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.
+#' @export
 #' @examples
 #' guideLevelStats = findGuideHits(binReadMat, binBounds)
 findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean){
@@ -122,6 +126,7 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 #' @param mergeBy usually contains a data.frame containing the headers that demarcate the screen ID
 #' @param ntSampleFold how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)
 #' @return a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy
+#' @export
 #' @examples
 #' #not generally used directly
 getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10){
@@ -160,6 +165,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
 #' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all windows tested for activity
+#' @export
 #' @examples
 #' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
 #' elementLevelStatsTiling = getTilingElementwiseStats(myScreens, allGuideLevelStats, tails = "upper")
@@ -237,6 +243,7 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
 #' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all elements
+#' @export
 #' @examples
 #' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
 #' elementLevelStats = getElementwiseStats(unique(allGuideLevelStats["screen"]),allGuideLevelStats, elementIDs="element",tails="upper")
@@ -277,6 +284,7 @@ getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="
 #' @param binStats a bin model as created by makeBinModel, as well as columns corresponding to those in  'experiments'
 #' @param ... other parameters for findGuideHits
 #' @return guide-level stats for all experiments
+#' @export
 #' @examples
 #'  allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
 findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
