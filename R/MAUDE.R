@@ -1,11 +1,28 @@
 
-library(codetools)
+#library(codetools)
 
-
+#' Combines Z-scores using Stouffer's method
+#'
+#' This function takes a vector of Z-scores and combines them into a single Z-score using Stouffer's method.
+#' @param x a vector of Z-scores to be combined
+#' @return Returns a single Z-score.
+#' @examples
+#' combineZStouffer(rnorm(10))
 combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
 
+#' Calculate the log likelihood of observed read counts
+#'
+#' Uses a normal distribution (N(mu,sigma)) to estimate how many reads are expected per bin under nullModel, and calculates the log likelihood under a negative binomial model.
+#' @param x a vector of guide counts per bin
+#' @param mu the mean for the normal expression distribution
+#' @param k the vector of total counts per bin
+#' @param sigma for the normal expression distribution (defaults to 1)
+#' @param nullModel the bin bounds for the null model (for no change in expression)
+#' @param libFract the fraction of the unsorted library this guide comprises (e.g. from unsorted cells, or sequencing the vector)
+#' @return the log likelihood
+#' @examples
+#' #usually not used directly
 getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
-  #x= vector of guide counts per bin
   #mu = mean of distribution
   #k = vector of total counts per bin
   #sigma = sigma for normal distribution
@@ -23,8 +40,17 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   }
   return(likelihood)
 }
-checkUsage(getNBGaussianLikelihood)
+#checkUsage(getNBGaussianLikelihood)
 
+#' Create a bin model for a single experiment
+#'
+#' Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution.
+#' @param curBinBounds  a data.frame containing three columns: Bin {A,B,C,D,E,F}, and fraction (the fractions of the total captured by each bin)
+#' @param tailP the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)
+#' @return returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
+#' @examples
+#' binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data
+#' p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
 makeBinModel = function(curBinBounds,tailP=0.001){
   curBinBounds$binStartQ[curBinBounds$Bin=="A"]=tailP #A
   curBinBounds$binEndQ[curBinBounds$Bin=="A"] = curBinBounds$binStartQ[curBinBounds$Bin=="A"] + curBinBounds$fraction[curBinBounds$Bin=="A"];
@@ -42,8 +68,18 @@ makeBinModel = function(curBinBounds,tailP=0.001){
   curBinBounds$binEndZ = qnorm(curBinBounds$binEndQ)
   return(curBinBounds)
 }
-checkUsage(makeBinModel)
+#checkUsage(makeBinModel)
 
+#' Calculate guide-level statistics for a single screen
+#'
+#' Given a table of counts per guide/bin and a bin model for an experiment, calculate the optimal mean expression for each guide
+#' @param countTable a table containing one column for each bin (A-F) and another column for non-targeting guide (logical-"NT"), and unsorted abundance (NS)
+#' @param curBinBounds a bin model as created by makeBinModel
+#' @param pseudocount the count to be added to each bin count, per 1e6 reads/bin total (default=10 pseudo reads per 1e6 reads total)
+#' @param meanFunction how to calculate the mean of the non-targeting guides for centering Z-scores.  Defaults to 'mean'
+#' @return a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.
+#' @examples
+#' guideLevelStats = findGuideHits(binReadMat, binBounds)
 findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean){
   allBins = c("A","B","C","D","E","F")
   if (pseudocount>0){
@@ -75,14 +111,24 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   }
   return(curNormNBSummaries)
 }
-checkUsage(findGuideHits)
+#checkUsage(findGuideHits)
 
 
-getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
+#' Calculate Z-score scaling factors using non-targeting guides
+#'
+#' Calculates scaling factors to calibrate  element-wise Z-scores by repeatedly calculating a set of "null" Z-scores by repeatedly sampling the given numbers of non-targeting guides per element.
+#' @param ntData data.frame containing the data for the non-targeting guides
+#' @param uGuidesPerElement a unique vector of guide counts per element
+#' @param mergeBy usually contains a data.frame containing the headers that demarcate the screen ID
+#' @param ntSampleFold how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)
+#' @return a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy
+#' @examples
+#' #not generally used directly
+getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10){
   message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
   ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
   zScales = data.frame();
-  for(i in uGuideLens){
+  for(i in uGuidesPerElement){
     ntData = ntData[order(runif(nrow(ntData))),]
     for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
     ntData$groupID = floor((0:(nrow(ntData)-1))/i)
@@ -100,9 +146,24 @@ getZScalesWithNTGuides = function(ntData, uGuideLens, mergeBy, ntSampleFold=10){
   }
   return(zScales)
 }
-checkUsage(getZScalesWithNTGuides)
+#checkUsage(getZScalesWithNTGuides)
 
-getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, ...){
+#' Find active elements by sliding window
+#'
+#' Tests guides for activity by considering a sliding window across the tested region and including all guides within the window for the test.
+#' @param experiments a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries
+#' @param normNBSummaries data.frame of guide-level statistics as generated by findGuideHits()
+#' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
+#' @param location the name of the column in normNBSummaries containing the chromosomal location (defaults to "pos")
+#' @param chr the name of the column in normNBSummaries containing the chromosome name (defaults to "chr")
+#' @param window the window width in base pairs (defaults to 500)
+#' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
+#' @param ... other parameters for getZScalesWithNTGuides
+#' @return a data.frame containing the statistics for all windows tested for activity
+#' @examples
+#' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
+#' elementLevelStatsTiling = getTilingElementwiseStats(myScreens, allGuideLevelStats, tails = "upper")
+getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, ...){
   if(!location %in% names(normNBSummaries)){
     stop(sprintf("Column '%s' is missing from normNBSummaries", location))
   }
@@ -112,16 +173,16 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
   if(!chr %in% names(normNBSummaries)){
     stop(sprintf("Column '%s' is missing from normNBSummaries", chr))
   }
-  screens = unique(screens);
-  mergeBy = names(screens);
+  experiments = unique(experiments);
+  mergeBy = names(experiments);
   ntData = normNBSummaries[normNBSummaries$NT,]
   normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
   elementwiseStats = data.frame();
-  for (i in 1:nrow(screens)){
+  for (i in 1:nrow(experiments)){
     #message(i)
     for (curChr in unique(normNBSummaries[[chr]])){
       #message(curChr)
-      curData = merge(screens[i,],normNBSummaries[normNBSummaries[[chr]]==curChr,])
+      curData = merge(experiments[i,],normNBSummaries[normNBSummaries[[chr]]==curChr,])
       curData = curData[order(curData[location]),]
       lagging=1
       leading=1
@@ -137,7 +198,7 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
         }
         #message(sprintf("%i:%i %s:%i-%i",lagging,leading, curChr, curData[[location]][lagging], curData[[location]][leading]))
         if (leading-lagging +1 >= minGuides){
-          elementwiseStats = rbind(elementwiseStats, data.frame(screens[i,], chr = curChr, start = curData[[location]][lagging], end = curData[[location]][leading], numGuides = leading-lagging+1, stoufferZ=combineZStouffer(curData$Z[lagging:leading]), meanZ=mean(curData$Z[lagging:leading])))
+          elementwiseStats = rbind(elementwiseStats, data.frame(experiments[i,], chr = curChr, start = curData[[location]][lagging], end = curData[[location]][leading], numGuides = leading-lagging+1, stoufferZ=combineZStouffer(curData$Z[lagging:leading]), meanZ=mean(curData$Z[lagging:leading])))
         }
         leading = leading + 1;
       }
@@ -146,10 +207,10 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
   #calibrate Z scores
-  uGuideLens = sort(unique(elementwiseStats$numGuides))
+  uGuidesPerElement = sort(unique(elementwiseStats$numGuides))
   zScales = data.frame();
   #build background
-  zScales = getZScalesWithNTGuides(ntData,uGuideLens, mergeBy, ...)
+  zScales = getZScalesWithNTGuides(ntData,uGuidesPerElement, mergeBy, ...)
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
   elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
@@ -165,20 +226,32 @@ getTilingElementwiseStats = function(screens, normNBSummaries, tails="both", loc
   elementwiseStats$Zscale=NULL
   return(elementwiseStats);
 }
-checkUsage(getTilingElementwiseStats)
+#checkUsage(getTilingElementwiseStats)
 
-getElementwiseStats = function(screens, normNBSummaries, elementIDs, tails="both",...){
-  screens = unique(screens);
-  mergeBy = names(screens);
+#' Find active elements by annotation
+#'
+#' Tests guides for activity by considering a sliding window across the tested region and including all guides within the window for the test.
+#' @param experiments a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries
+#' @param normNBSummaries data.frame of guide-level statistics as generated by findGuideHits()
+#' @param elementIDs the names of one or more columns within guideLevelStats that contain the element annotations.
+#' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
+#' @param ... other parameters for getZScalesWithNTGuides
+#' @return a data.frame containing the statistics for all elements
+#' @examples
+#' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
+#' elementLevelStats = getElementwiseStats(unique(allGuideLevelStats["screen"]),allGuideLevelStats, elementIDs="element",tails="upper")
+getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="both",...){
+  experiments = unique(experiments);
+  mergeBy = names(experiments);
   ntData = normNBSummaries[normNBSummaries$NT,]
   normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
   elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
   #calibrate Z scores
-  uGuideLens = sort(unique(elementwiseStats$numGuides))
+  uGuidesPerElement = sort(unique(elementwiseStats$numGuides))
   #build background
-  zScales = getZScalesWithNTGuides(ntData,uGuideLens, mergeBy, ...)
+  zScales = getZScalesWithNTGuides(ntData,uGuidesPerElement, mergeBy, ...)
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
   elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
@@ -194,9 +267,19 @@ getElementwiseStats = function(screens, normNBSummaries, elementIDs, tails="both
   elementwiseStats$Zscale=NULL
   return(elementwiseStats);
 }
-checkUsage(getElementwiseStats)
+#checkUsage(getElementwiseStats)
 
-findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
+#' Calculate guide-level stats for multiple experiments
+#'
+#' Uses findGuideHits to find guide-level stats for each unique entry in 'experiments'.
+#' @param experiments a data.frame containing the headers that demarcate the screen ID, which are all also present in countDataFrame and binStats
+#' @param countDataFrame a table containing one column for each bin (A-F) and another column for non-targeting guide (logical-"NT"), and unsorted abundance (NS), as well as columns corresponding to those in  'experiments' 
+#' @param binStats a bin model as created by makeBinModel, as well as columns corresponding to those in  'experiments'
+#' @param ... other parameters for findGuideHits
+#' @return guide-level stats for all experiments
+#' @examples
+#'  allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
+findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   if (!"Bin" %in% names(binStats)){
     if (!"bin" %in% names(binStats)){
       warning("'Bin' column not found in binStats; using 'bin' instead")
@@ -211,30 +294,30 @@ findGuideHitsAllScreens = function(screens, countDataFrame, binStats, ...){
   if (!all(c("A","B","C","D","E","F","NS") %in% names(countDataFrame))){
     stop("Not all bins (A-F, NS) present in countDataFrame!")
   }
-  screens = unique(screens);
-  mergeBy = names(screens);
+  experiments = unique(experiments);
+  mergeBy = names(experiments);
   if (!all(mergeBy %in% names(countDataFrame))){
-    message(names(screens))
+    message(names(experiments))
     message(names(countDataFrame))
-    stop("Columns from 'screens' missing from 'countDataFrame'");
+    stop("Columns from 'experiments' missing from 'countDataFrame'");
   }
   if (!all(mergeBy %in% names(binStats))){
-    stop("Columns from 'screens' missing from 'binStats'");
+    stop("Columns from 'experiments' missing from 'binStats'");
   }
-  screens[ncol(screens)+1]=1:nrow(screens);
-  idCol = names(screens)[ncol(screens)];
-  countDataFrame = merge(countDataFrame, screens, by=mergeBy);
-  binStats = merge(binStats, screens, by=mergeBy);
+  experiments[ncol(experiments)+1]=1:nrow(experiments);
+  idCol = names(experiments)[ncol(experiments)];
+  countDataFrame = merge(countDataFrame, experiments, by=mergeBy);
+  binStats = merge(binStats, experiments, by=mergeBy);
   
   allSummaries = data.frame()
-  for(j in 1:nrow(screens)){
+  for(j in 1:nrow(experiments)){
     normNBSummaries = findGuideHits(
-      countDataFrame[countDataFrame[[idCol]]==screens[[idCol]][j],], 
-      makeBinModel(binStats[binStats[[idCol]]==screens[[idCol]][j] , c("Bin","fraction")]), ...)
+      countDataFrame[countDataFrame[[idCol]]==experiments[[idCol]][j],], 
+      makeBinModel(binStats[binStats[[idCol]]==experiments[[idCol]][j] , c("Bin","fraction")]), ...)
     allSummaries = rbind(allSummaries,normNBSummaries)
   }
   allSummaries[[idCol]]=NULL;
   return(allSummaries);
 }
-checkUsage(findGuideHitsAllScreens)
+#checkUsage(findGuideHitsAllScreens)
 
