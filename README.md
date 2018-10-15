@@ -5,6 +5,14 @@ MAUDE is an R package for finding differences in means of normally distributed (
 
 <img src="images/logo2.png" alt="Maude Flanders" width="400"/>
 
+# Table of contents
+<!--ts-->
+   * [R Installation](#r-installation)
+   * [Requirements](#requirements)
+   * [Usage](#usage)
+   * [Fewer than six bins](#fewer-than-six-bins)
+   * [Citation](#citation)
+<!--te-->
 
 # R Installation
 
@@ -20,10 +28,10 @@ library(devtools)
 install_github("Carldeboer/MAUDE")
 ```
 # Requirements
-Right now we have three main requirements: 
+Right now we have two main requirements: 
 1. Non-targeting guides are included in the experiment to serve as negative controls and are used for calibrating Z-scores and P-values.
 2. The abundance of the guides must have been measured somehow (either by unsorted cells)
-3. There are 6 sorting bins - they don't have to be contiguous, but `makeBinModel` assumes that they are. We plan on relaxing this constraint in the near future, but we recommend using as many bins as your FACS can handle.
+
 
 # Usage
 The following is an example that relies on simulated data and makes use of the `ggplot2` and `reshape` R packages.  Since there is no data to load for this example, it should be relatively easy to run and to inspect the variables to better understand the desired format.  This should also help make clear the underlying assumptions of the model.
@@ -138,6 +146,31 @@ p = ggplot(elementLevelStats, aes(x=meanEffect, y=meanZ, colour=FDR<0.01)) + geo
 ```
 ![Actual vs. estimated effect sizes2](images/20181011_simulated_estimated_vs_actual_effect_sizes_zoom.png "Actual vs. estimated effect sizes2")
 In this particular simulation we have 1 false positive out of nearly 100 true positives (consistent with our FDR cutoff of 0.01), and three false negatives with very small effect sizes.
+
+# Fewer than six bins
+Initial experiments have indicated that more sorting bins is better regardless of bin size: more bins is both more sensitive (number of TPs) and more accurate (correlation between inferred and actual effect size).
+
+![Varying bin sizes](images/20181015_r-vs-TPs_bin_number_shapes_noDB_good.png "Varying bin sizes")
+
+The above shows, for different sized bins, the Pearson r comparing actual and inferred effect sizes (simulated data) and the number of true positives, as the number of bins is altered, always using the most extreme bins.
+
+Nonetheless, MAUDE can be adapted to use fewer than six bins with minimal changes.  The easiest way to do this is to create "null" bins, where there are no reads in any of the bins, and creating a bin model with such a small cell frequency that no cells are ever expected to land within the bin.
+For example, using four 10% bins:
+
+```R
+eps=0.00000000001; # a very small number
+#4 bins only
+binReadMat$C=0; binReadMat$D=0; # bin C and D get no reads
+binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=c(0.1,0.1,eps,eps,0.1,0.1)); #10% bins, with null bin C and D
+```
+And two 10% bins: 
+```R
+#2 bins only
+binReadMat$C=0; binReadMat$D=0; # bin C and D get no reads
+binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=c(0.1,eps,eps,eps,eps,0.1)); #10% bins, with null bin B-E
+```
+
+We plan on eventually making this easier, but for now this works well.
 
 # Citation
 Coming soon to the bioRxiv.  
