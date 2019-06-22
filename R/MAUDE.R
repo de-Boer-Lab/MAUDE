@@ -55,18 +55,29 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 #' binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data
 #' p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
 makeBinModel = function(curBinBounds,tailP=0.001){
-  curBinBounds$binStartQ[curBinBounds$Bin=="A"]=tailP #A
-  curBinBounds$binEndQ[curBinBounds$Bin=="A"] = curBinBounds$binStartQ[curBinBounds$Bin=="A"] + curBinBounds$fraction[curBinBounds$Bin=="A"];
-  curBinBounds$binStartQ[curBinBounds$Bin=="B"] = curBinBounds$binEndQ[curBinBounds$Bin=="A"]; #B
-  curBinBounds$binEndQ[curBinBounds$Bin=="B"] = curBinBounds$binStartQ[curBinBounds$Bin=="B"] + curBinBounds$fraction[curBinBounds$Bin=="B"];
-  curBinBounds$binStartQ[curBinBounds$Bin=="C"] = curBinBounds$binEndQ[curBinBounds$Bin=="B"]; #C
-  curBinBounds$binEndQ[curBinBounds$Bin=="C"] = curBinBounds$binStartQ[curBinBounds$Bin=="C"] + curBinBounds$fraction[curBinBounds$Bin=="C"];
-  curBinBounds$binEndQ[curBinBounds$Bin=="F"]=1-tailP # F
-  curBinBounds$binStartQ[curBinBounds$Bin=="F"] = curBinBounds$binEndQ[curBinBounds$Bin=="F"] - curBinBounds$fraction[curBinBounds$Bin=="F"];
-  curBinBounds$binEndQ[curBinBounds$Bin=="E"] = curBinBounds$binStartQ[curBinBounds$Bin=="F"]; #E
-  curBinBounds$binStartQ[curBinBounds$Bin=="E"] = curBinBounds$binEndQ[curBinBounds$Bin=="E"] - curBinBounds$fraction[curBinBounds$Bin=="E"];
-  curBinBounds$binEndQ[curBinBounds$Bin=="D"] = curBinBounds$binStartQ[curBinBounds$Bin=="E"]; #D
-  curBinBounds$binStartQ[curBinBounds$Bin=="D"] = curBinBounds$binEndQ[curBinBounds$Bin=="D"] - curBinBounds$fraction[curBinBounds$Bin=="D"];
+  if (!all(curBinBounds$Bin %in% c("A","B","C","D","E","F"))){
+    error("Bin IDs must be A-F inclusive")
+  }
+  if (sum(curBinBounds$Bin %in% c("A","B","C","D","E","F"))<2){
+    error("Must have at least two bins.")
+  }
+  curBinBounds = curBinBounds[c("Bin","fraction")] # only want these two columns;
+
+  #add any missing bins (null bins with no area)
+  curBinBounds = rbind(curBinBounds, data.frame(Bin = c("A","B","C","D","E","F")[! c("A","B","C","D","E","F") %in% curBinBounds$Bin], fraction=0))
+  #make bin cumulative probabilities (Q) 
+  lastP = tailP;
+  for (b in c("A","B","C")){
+    curBinBounds$binStartQ[curBinBounds$Bin==b] = lastP
+    curBinBounds$binEndQ[curBinBounds$Bin==b] = curBinBounds$binStartQ[curBinBounds$Bin==b] + curBinBounds$fraction[curBinBounds$Bin==b];
+    lastP= curBinBounds$binEndQ[curBinBounds$Bin==b];
+  }
+  lastP = 1-tailP;
+  for (b in c("F","E","D")){
+    curBinBounds$binEndQ[curBinBounds$Bin==b] = lastP
+  curBinBounds$binStartQ[curBinBounds$Bin==b] = curBinBounds$binEndQ[curBinBounds$Bin==b] - curBinBounds$fraction[curBinBounds$Bin==b];
+    lastP= curBinBounds$binStartQ[curBinBounds$Bin==b];
+  }
   curBinBounds$binStartZ = qnorm(curBinBounds$binStartQ)
   curBinBounds$binEndZ = qnorm(curBinBounds$binEndQ)
   return(curBinBounds)
