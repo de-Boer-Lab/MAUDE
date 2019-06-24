@@ -64,7 +64,7 @@ makeBinModel = function(curBinBounds,tailP=0.001){
   curBinBounds = curBinBounds[c("Bin","fraction")] # only want these two columns;
 
   #add any missing bins (null bins with no area)
-  curBinBounds = rbind(curBinBounds, data.frame(Bin = c("A","B","C","D","E","F")[! c("A","B","C","D","E","F") %in% curBinBounds$Bin], fraction=0))
+  curBinBounds = rbind(curBinBounds, data.frame(Bin = c("A","B","C","D","E","F")[! c("A","B","C","D","E","F") %in% curBinBounds$Bin], fraction=0.00000000001))
   #make bin cumulative probabilities (Q) 
   lastP = tailP;
   for (b in c("A","B","C")){
