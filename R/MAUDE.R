@@ -36,7 +36,7 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   #message(sprintf("scaled binFractions = %s",paste(as.character((binFractions)),collapse=", ")))
   likelihood =0;
   #message(sprintf("observed fractions = %s",paste(as.character(((x/k))),collapse=", ")))
-  for (i in 1:6){
+  for (i in 1:nrow(nullModel)){
     #dnbinom(x = number of reads for this guide, size = number of reads total, prob= probability of getting a read at each drawing)
     likelihood = likelihood  + dnbinom(x=x[i], size=k[i], prob =1- binFractions[i], log=T)
   }
@@ -46,8 +46,8 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 
 #' Create a bin model for a single experiment
 #'
-#' Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution.
-#' @param curBinBounds  a data.frame containing three columns: Bin {A,B,C,D,E,F}, and fraction (the fractions of the total captured by each bin)
+#' Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. In order to create empty bins, use curBinBounds$fraction=0.00000000001 (or some other really small number), which effectively makes the bins so small as to not exist.
+#' @param curBinBounds  a data.frame containing three columns: Bin (must be {A,B,C,D,E,F}), and fraction (the fractions of the total captured by each bin)
 #' @param tailP the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)
 #' @return returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
 #' @export
@@ -56,13 +56,13 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 #' p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
 makeBinModel = function(curBinBounds,tailP=0.001){
   if (!all(curBinBounds$Bin %in% c("A","B","C","D","E","F"))){
-    error("Bin IDs must be A-F inclusive")
+    stop("Bin IDs must be A-F inclusive")
   }
   if (sum(curBinBounds$Bin %in% c("A","B","C","D","E","F"))<2){
-    error("Must have at least two bins.")
+    stop("Must have at least two bins.")
   }
   curBinBounds = curBinBounds[c("Bin","fraction")] # only want these two columns;
-
+  
   #add any missing bins (null bins with no area)
   curBinBounds = rbind(curBinBounds, data.frame(Bin = c("A","B","C","D","E","F")[! c("A","B","C","D","E","F") %in% curBinBounds$Bin], fraction=0.00000000001))
   #make bin cumulative probabilities (Q) 
@@ -75,7 +75,7 @@ makeBinModel = function(curBinBounds,tailP=0.001){
   lastP = 1-tailP;
   for (b in c("F","E","D")){
     curBinBounds$binEndQ[curBinBounds$Bin==b] = lastP
-  curBinBounds$binStartQ[curBinBounds$Bin==b] = curBinBounds$binEndQ[curBinBounds$Bin==b] - curBinBounds$fraction[curBinBounds$Bin==b];
+    curBinBounds$binStartQ[curBinBounds$Bin==b] = curBinBounds$binEndQ[curBinBounds$Bin==b] - curBinBounds$fraction[curBinBounds$Bin==b];
     lastP= curBinBounds$binStartQ[curBinBounds$Bin==b];
   }
   curBinBounds$binStartZ = qnorm(curBinBounds$binStartQ)
@@ -91,37 +91,48 @@ makeBinModel = function(curBinBounds,tailP=0.001){
 #' @param curBinBounds a bin model as created by makeBinModel
 #' @param pseudocount the count to be added to each bin count, per 1e6 reads/bin total (default=10 pseudo reads per 1e6 reads total)
 #' @param meanFunction how to calculate the mean of the non-targeting guides for centering Z-scores.  Defaults to 'mean'
+#' @param sortBins the names in countTable of the sorting bins.  Defaults to c("A","B","C","D","E","F")
+#' @param unsortedBin the name in countTable of the unsorted bin.  Defaults to "NS"
+#' @param nonTargeting the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @return a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.
 #' @export
 #' @examples
 #' guideLevelStats = findGuideHits(binReadMat, binBounds)
-findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean){
-  allBins = c("A","B","C","D","E","F")
+findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT"){
+  if(!nonTargeting %in% names(countTable)){
+    stop(sprintf("Column '%s' is missing from countTable; did you specify 'nonTargeting='?", nonTargeting))
+  }
+  if(!unsortedBin %in% names(countTable)){
+    stop(sprintf("Column '%s' is missing from countTable; did you specify 'unsortedBin='?", unsortedBin))
+  }
+  if(!all(sortBins %in% names(countTable))){
+    stop(sprintf("Not all sort bins '%s' are present as columns in countTable; did you specify 'sortBins='?", paste(sortBins, collapse=", ")))
+  }
   if (pseudocount>0){
-    for(b in allBins){
+    for(b in sortBins){
       countTable[b]=countTable[b]+max(1,round(pseudocount*(sum(countTable[b])/1E6)));#add a pseudocount in proportion to depth
     }
-    #countTable[allBins]=countTable[allBins]+pseudocount;#add a pseudocount
-    countTable["NS"]=countTable["NS"]+pseudocount;
+    #countTable[sortBins]=countTable[sortBins]+pseudocount;#add a pseudocount
+    countTable[unsortedBin]=countTable[unsortedBin]+pseudocount;
   }
   curNormNBSummaries = countTable
-  countTable$libFraction = countTable$NS/sum(countTable$NS,na.rm=T)
+  countTable$libFraction = countTable[[unsortedBin]]/sum(countTable[[unsortedBin]],na.rm=T)
   
-  curNormNBSummaries$libFraction = curNormNBSummaries$NS/sum(curNormNBSummaries$NS,na.rm=T)
-  binCounts = apply(curNormNBSummaries[allBins],2,function(x){sum(x, na.rm = T)})
+  curNormNBSummaries$libFraction = curNormNBSummaries[[unsortedBin]]/sum(curNormNBSummaries[[unsortedBin]],na.rm=T)
+  binCounts = apply(curNormNBSummaries[sortBins],2,function(x){sum(x, na.rm = T)})
   
   #for each guide, find the optimal mu given the count data and bin percentages
   for (i in 1:nrow(curNormNBSummaries)){
     #interval: The probability of observing a guide outside of this interval in one of the non-terminal bins is very unlikely, and so estimating a true mean for these is too difficult anyway. Besides, we get some local optima at the extremes for sparsely sampled data.
-    temp = optimize(f=function(mu){getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[allBins][i,]), mu=mu, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])}, interval=c(-4,4), maximum = T)
+    temp = optimize(f=function(mu){getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=mu, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])}, interval=c(-4,4), maximum = T)
     #TODO: This function can get stuck in local minima. Pseudocounts help prevent this, but it can still happen, resulting in a negative logliklihood ratio (i.e. Null is more likely than optimized alternate).  Usually this happens close to an effect size of 0.  I should still explore other optimization functions (e.g. optim)
     curNormNBSummaries$mean[i]=temp$maximum
     curNormNBSummaries$ll[i]=temp$objective
   }
   #recalculate LL ratio and calculate a Z score for the mean WRT the observed mean expression of the non-targeting (NT) guides
-  muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries$NT]) # mean of the non-targeting guides mean expressions
+  muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[nonTargeting]]]) # mean of the non-targeting guides mean expressions
   for (i in 1:nrow(curNormNBSummaries)){
-    curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[allBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+    curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
     curNormNBSummaries$Z[i]=curNormNBSummaries$mean[i]-muNT
   }
   return(curNormNBSummaries)
@@ -174,15 +185,19 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
 #' @param chr the name of the column in normNBSummaries containing the chromosome name (defaults to "chr")
 #' @param window the window width in base pairs (defaults to 500)
 #' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
+#' @param nonTargeting the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all windows tested for activity
 #' @export
 #' @examples
 #' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
 #' elementLevelStatsTiling = getTilingElementwiseStats(myScreens, allGuideLevelStats, tails = "upper")
-getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, ...){
+getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, nonTargeting="NT", ...){
   if(!location %in% names(normNBSummaries)){
-    stop(sprintf("Column '%s' is missing from normNBSummaries", location))
+    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'location='?", location))
+  }
+  if(!nonTargeting %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'nonTargeting='?", nonTargeting))
   }
   if(!"Z" %in% names(normNBSummaries)){
     stop(sprintf("Column 'Z' is missing from normNBSummaries"))
@@ -192,8 +207,8 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   }
   experiments = unique(experiments);
   mergeBy = names(experiments);
-  ntData = normNBSummaries[normNBSummaries$NT,]
-  normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
+  ntData = normNBSummaries[normNBSummaries[[nonTargeting]],]
+  normNBSummaries = normNBSummaries[!normNBSummaries[[nonTargeting]],]
   elementwiseStats = data.frame();
   for (i in 1:nrow(experiments)){
     #message(i)
@@ -243,15 +258,15 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   }
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
   message("Calculating P-values")
-  elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
+  elementwiseStats$significanceZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
-    elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
+    elementwiseStats$p.value = pnorm(elementwiseStats$significanceZ)
   }
   if (tails=="both"){
-    elementwiseStats$p.value[elementwiseStats$rescaledZ>0] = pnorm(-elementwiseStats$rescaledZ[elementwiseStats$rescaledZ>0])
+    elementwiseStats$p.value[elementwiseStats$significanceZ>0] = pnorm(-elementwiseStats$significanceZ[elementwiseStats$significanceZ>0])
   }
   if (tails=="upper"){
-    elementwiseStats$p.value = pnorm(-elementwiseStats$rescaledZ)
+    elementwiseStats$p.value = pnorm(-elementwiseStats$significanceZ)
   }
   elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
   elementwiseStats$Zscale=NULL
@@ -266,17 +281,21 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
 #' @param normNBSummaries data.frame of guide-level statistics as generated by findGuideHits()
 #' @param elementIDs the names of one or more columns within guideLevelStats that contain the element annotations.
 #' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
+#' @param nonTargeting the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all elements
 #' @export
 #' @examples
 #' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
 #' elementLevelStats = getElementwiseStats(unique(allGuideLevelStats["screen"]),allGuideLevelStats, elementIDs="element",tails="upper")
-getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="both",...){
+getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="both", nonTargeting="NT",...){
+  if(!nonTargeting %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'nonTargeting='?", nonTargeting))
+  }
   experiments = unique(experiments);
   mergeBy = names(experiments);
-  ntData = normNBSummaries[normNBSummaries$NT,]
-  normNBSummaries = normNBSummaries[!normNBSummaries$NT,]
+  ntData = normNBSummaries[normNBSummaries[[nonTargeting]],]
+  normNBSummaries = normNBSummaries[!normNBSummaries[[nonTargeting]],]
   elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
@@ -285,15 +304,15 @@ getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="
   #build background
   zScales = getZScalesWithNTGuides(ntData,uGuidesPerElement, mergeBy, ...)
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
-  elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
+  elementwiseStats$significanceZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
-    elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
+    elementwiseStats$p.value = pnorm(elementwiseStats$significanceZ)
   }
   if (tails=="both"){
-    elementwiseStats$p.value[elementwiseStats$rescaledZ>0] = pnorm(-elementwiseStats$rescaledZ[elementwiseStats$rescaledZ>0])
+    elementwiseStats$p.value[elementwiseStats$significanceZ>0] = pnorm(-elementwiseStats$significanceZ[elementwiseStats$significanceZ>0])
   }
   if (tails=="upper"){
-    elementwiseStats$p.value = pnorm(-elementwiseStats$rescaledZ)
+    elementwiseStats$p.value = pnorm(-elementwiseStats$significanceZ)
   }
   elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
   elementwiseStats$Zscale=NULL
@@ -322,10 +341,7 @@ findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
     }
   }
   if (!"fraction" %in% names(binStats)){
-    stop("No 'frequency' column in binStats!")
-  }
-  if (!all(c("A","B","C","D","E","F","NS") %in% names(countDataFrame))){
-    stop("Not all bins (A-F, NS) present in countDataFrame!")
+    stop("No 'fraction' column in binStats!")
   }
   experiments = unique(experiments);
   mergeBy = names(experiments);
@@ -346,11 +362,13 @@ findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   for(j in 1:nrow(experiments)){
     normNBSummaries = findGuideHits(
       countDataFrame[countDataFrame[[idCol]]==experiments[[idCol]][j],], 
-      makeBinModel(binStats[binStats[[idCol]]==experiments[[idCol]][j] , c("Bin","fraction")]), ...)
+      #makeBinModel(binStats[binStats[[idCol]]==experiments[[idCol]][j] , c("Bin","fraction")]), ...)
+      binStats[binStats[[idCol]]==experiments[[idCol]][j] , ], ...)
     allSummaries = rbind(allSummaries,normNBSummaries)
   }
   allSummaries[[idCol]]=NULL;
   return(allSummaries);
 }
 #checkUsage(findGuideHitsAllScreens)
+
 
