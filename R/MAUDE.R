@@ -162,7 +162,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
     ntData = ntData[order(runif(nrow(ntData))),]
     for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
     ntData$groupID = floor((0:(nrow(ntData)-1))/i)
-    message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
+    #message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
     #message(str(ntData))
     ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
     #message(str(ntStats))
@@ -217,8 +217,8 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
     #message(i)
     for (curChr in unique(normNBSummaries[[chr]])){
       #message(curChr)
-      message(paste(names(experiments[i,, drop=FALSE]), collapse=", "))
-      message(paste(names(normNBSummaries[i,]), collapse=", "))
+      #message(paste(names(experiments[i,, drop=FALSE]), collapse=", "))
+      #message(paste(names(normNBSummaries[i,]), collapse=", "))
       curData = merge(experiments[i,, drop=FALSE],normNBSummaries[normNBSummaries[[chr]]==curChr,], by=mergeBy)
       curData = curData[order(curData[location]),]
       lagging=1
