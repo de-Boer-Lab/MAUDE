@@ -129,6 +129,9 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     curNormNBSummaries$mean[i]=temp$maximum
     curNormNBSummaries$ll[i]=temp$objective
   }
+  if (sum(curNormNBSummaries[[nonTargeting]]) == 0){
+    warning(sprintf("Cannot calculate logliklihood ratio or Z score without non-targeting guides and %s indicates there are no such guides",nonTargeting))
+  }
   #recalculate LL ratio and calculate a Z score for the mean WRT the observed mean expression of the non-targeting (NT) guides
   muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[nonTargeting]]]) # mean of the non-targeting guides mean expressions
   for (i in 1:nrow(curNormNBSummaries)){
