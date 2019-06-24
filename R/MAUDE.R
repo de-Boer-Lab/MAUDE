@@ -199,7 +199,9 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
     #message(i)
     for (curChr in unique(normNBSummaries[[chr]])){
       #message(curChr)
-      curData = merge(experiments[i,],normNBSummaries[normNBSummaries[[chr]]==curChr,])
+      message(paste(names(experiments[i,, drop=FALSE]), collapse=", "))
+      message(paste(names(normNBSummaries[i,]), collapse=", "))
+      curData = merge(experiments[i,, drop=FALSE],normNBSummaries[normNBSummaries[[chr]]==curChr,], by=mergeBy)
       curData = curData[order(curData[location]),]
       lagging=1
       leading=1
@@ -215,7 +217,11 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
         }
         #message(sprintf("%i:%i %s:%i-%i",lagging,leading, curChr, curData[[location]][lagging], curData[[location]][leading]))
         if (leading-lagging +1 >= minGuides){
-          elementwiseStats = rbind(elementwiseStats, data.frame(experiments[i,], chr = curChr, start = curData[[location]][lagging], end = curData[[location]][leading], numGuides = leading-lagging+1, stoufferZ=combineZStouffer(curData$Z[lagging:leading]), meanZ=mean(curData$Z[lagging:leading])))
+          curRes = data.frame(chr = curChr, start = curData[[location]][lagging], end = curData[[location]][leading], numGuides = leading-lagging+1, stoufferZ=combineZStouffer(curData$Z[lagging:leading]), meanZ=mean(curData$Z[lagging:leading]))
+          for (k in names(experiments)){
+            curRes[k]=experiments[i,k];
+          }
+          elementwiseStats = rbind(elementwiseStats, curRes)
         }
         leading = leading + 1;
       }
@@ -227,8 +233,16 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   uGuidesPerElement = sort(unique(elementwiseStats$numGuides))
   zScales = data.frame();
   #build background
+  message("Building null model")
   zScales = getZScalesWithNTGuides(ntData,uGuidesPerElement, mergeBy, ...)
+  if (!all(c(mergeBy,"numGuides") %in% names(elementwiseStats))){
+    stop(sprintf("{%s} not all present in names of elementwiseStats: {%s}", paste(c(mergeBy,"numGuides"), collapse=", "), paste(names(elementwiseStats), collapse=", ")));
+  }
+  if (!all(c(mergeBy,"numGuides") %in% names(zScales))){
+    stop(sprintf("{%s} not all present in names of zScales: {%s}", paste(c(mergeBy,"numGuides"), collapse=", "), paste(names(zScales), collapse=", ")));
+  }
   elementwiseStats = merge(elementwiseStats, zScales, by=c(mergeBy,"numGuides"))
+  message("Calculating P-values")
   elementwiseStats$rescaledZ = elementwiseStats$stoufferZ/elementwiseStats$Zscale;
   if (tails=="both" || tails =="lower"){
     elementwiseStats$p.value = pnorm(elementwiseStats$rescaledZ)
