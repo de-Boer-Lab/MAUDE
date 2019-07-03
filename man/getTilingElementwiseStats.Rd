@@ -5,7 +5,8 @@
 \title{Find active elements by sliding window}
 \usage{
 getTilingElementwiseStats(experiments, normNBSummaries, tails = "both",
-  location = "pos", chr = "chr", window = 500, minGuides = 5, ...)
+  location = "pos", chr = "chr", window = 500, minGuides = 5,
+  nonTargeting = "NT", ...)
 }
 \arguments{
 \item{experiments}{a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries}
@@ -21,6 +22,8 @@ getTilingElementwiseStats(experiments, normNBSummaries, tails = "both",
 \item{window}{the window width in base pairs (defaults to 500)}
 
 \item{minGuides}{the minimum number of guides in a window required for a test (defaults to 5)}
+
+\item{nonTargeting}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
 
 \item{...}{other parameters for getZScalesWithNTGuides}
 }

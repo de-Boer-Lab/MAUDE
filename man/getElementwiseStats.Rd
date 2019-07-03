@@ -5,7 +5,7 @@
 \title{Find active elements by annotation}
 \usage{
 getElementwiseStats(experiments, normNBSummaries, elementIDs, tails = "both",
-  ...)
+  nonTargeting = "NT", ...)
 }
 \arguments{
 \item{experiments}{a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries}
@@ -15,6 +15,8 @@ getElementwiseStats(experiments, normNBSummaries, elementIDs, tails = "both",
 \item{elementIDs}{the names of one or more columns within guideLevelStats that contain the element annotations.}
 
 \item{tails}{whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")}
+
+\item{nonTargeting}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
 
 \item{...}{other parameters for getZScalesWithNTGuides}
 }

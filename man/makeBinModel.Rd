@@ -7,7 +7,7 @@
 makeBinModel(curBinBounds, tailP = 0.001)
 }
 \arguments{
-\item{curBinBounds}{a data.frame containing three columns: Bin {A,B,C,D,E,F}, and fraction (the fractions of the total captured by each bin)}
+\item{curBinBounds}{a data.frame containing three columns: Bin (must be {A,B,C,D,E,F}), and fraction (the fractions of the total captured by each bin)}
 
 \item{tailP}{the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)}
 }
@@ -15,7 +15,7 @@ makeBinModel(curBinBounds, tailP = 0.001)
 returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
 }
 \description{
-Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution.
+Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. In order to create empty bins, use curBinBounds$fraction=0.00000000001 (or some other really small number), which effectively makes the bins so small as to not exist.
 }
 \examples{
 binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data

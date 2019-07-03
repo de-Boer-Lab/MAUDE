@@ -3,6 +3,7 @@
 export(combineZStouffer)
 export(findGuideHits)
 export(findGuideHitsAllScreens)
+export(findOverlappingElements)
 export(getElementwiseStats)
 export(getNBGaussianLikelihood)
 export(getTilingElementwiseStats)
