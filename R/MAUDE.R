@@ -1,6 +1,44 @@
 
 #library(codetools)
 
+
+
+#' Find overlaps between guides and annotated elements
+#'
+#' Finds guides that overlap the elements of a BED-like data.frame (e.g. open chromatin regions) and returns a new data.frame containing those overlaps
+#' @param guides a data.frame containing guide information including the guides genomic position in a column named guides.pos
+#' @param elements a data.frame containing element information, as in a BED file, including the element's genomic start, end, and chromosome in columns named elements.start, elements.end, and elements.chr
+#' @param guides.pos the name of the column in guides that contains the genomic position targeted by the guide (defaults to "pos")
+#' @param guides.chr the name of the column in guides that contains the genomic chromosome targeted by the guide  (defaults to "chr")
+#' @param elements.start the name of the column in elements that contains the start coordinate of the element (defaults to "st")
+#' @param elements.end the name of the column in elements that contains the start coordinate of the element (defaults to "en")
+#' @param elements.chr the name of the column in elements that contains the start coordinate of the element (defaults to "chr")
+#' @return Returns a new data.frame containing the intersection of elements and guides
+#' @export
+#' @examples
+#' annotatedGuides = findOverlappingElements(myGuides, myElements)
+#` findOverlappingElements(data.frame(gid=1:10, chr=c(rep("chr1",5), rep("chr5",5)), pos= c(1:5,1:5)*10, stringsAsFactors = F), 
+#`    data.frame(eid=1:4, chr=c("chr1","chr1","chr4","chr5"), st=c(5,25,1,45),en=c(15,50,50,55), stringsAsFactors = F))
+findOverlappingElements = function(guides,elements,guides.pos="pos", guides.chr="chr",elements.start="st",elements.end="en", elements.chr="chr"){
+  if (! all(c(guides.pos, guides.chr) %in% names(guides))){
+    stop(sprintf("Cannot find all of %s and %s in guides data.frame!  Did you forget to set guides.pos or guides.chr?", guides.pos, guides.chr))
+  }
+  if (! all(c(elements.start, elements.end, elements.chr) %in% names(elements))){
+    stop(sprintf("Cannot find all of %s, %s, and %s in elements data.frame!  Did you forget to set elements.start or elements.end?", elements.start, elements.end, elements.chr))
+  }
+  intersection = data.frame()
+  for (xi in 1:nrow(elements)){
+    curGuides = guides[elements[[elements.start]][xi] <= guides[[guides.pos]] & elements[[elements.end]][xi] >= guides[[guides.pos]] & elements[[elements.chr]][xi]==guides[[guides.chr]],];
+    if (nrow(curGuides)>0){
+      curGuides[[guides.chr]]=NULL; #remove chr column 
+      intersection = rbind(intersection, cbind(curGuides,elements[xi,]))
+    }
+  }
+  return(intersection)
+}
+
+
+
 #' Combines Z-scores using Stouffer's method
 #'
 #' This function takes a vector of Z-scores and combines them into a single Z-score using Stouffer's method.
