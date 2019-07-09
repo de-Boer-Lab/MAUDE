@@ -59,25 +59,27 @@ binStats$fraction = binStats$binEndQ - binStats$binStartQ; #the fraction of cell
 p = ggplot(binStats, aes(colour=Bin)) + geom_segment(aes(x=binStartQ, xend=binEndQ, y=fraction, yend=fraction)) + xlab("Bin bounds as percentiles") + ylab("Fraction of the distribution captured") +theme_classic()+scale_y_continuous(expand=c(0,0))+coord_cartesian(ylim=c(0,0.7)); print(p)
 ```
 ![Bin percentiles for the CD69 screen](CD69_bin_percentiles.png "Bin percentiles")
-
+This shows the sizes of the bins in terms of the fractions of the overall distribution covered by each bin. In terms of expression space, we need to convert these to Z scores with the reverse normal CDF function `qnorm`
 ```R
 #convert bin fractions to Z scores
 binStats$binStartZ = qnorm(binStats$binStartQ)
 binStats$binEndZ = qnorm(binStats$binEndQ)
-
-#plot bins as the Z score bounds of a normal distribution, with an actual normal distribution overlaid
+```
+Now let's plot the bins as the Z score bounds of a normal distribution, with an actual normal distribution overlaid in gray.
+```R
 p = ggplot(binStats, aes(colour=Bin))  + geom_density(data=data.frame(x=rnorm(100000)), aes(x=x), fill="gray", colour=NA)+ geom_segment(aes(x=binStartZ, xend=binEndZ, y=fraction, yend=fraction)) + xlab("Bin bounds as expression Z-scores") + ylab("Fraction of the distribution captured") +theme_classic()+scale_y_continuous(expand=c(0,0))+coord_cartesian(ylim=c(0,0.7)); print(p)
 ```
 ![Bin expression bounds for the CD69 screen](CD69_bin_expression_bounds.png "Bin bounds")
 
-Here, we are forced to use the same distribution for both experimental replicates since we didn't have the underlying data
+Here, we are forced to use the same distribution for both experimental replicates since we didn't have the underlying data. You should derive this data from the FACS sorting data separately for each replicate (although it doesn't affect things that much if the bins were drawn similarly).
 ```R
 binStats = rbind(binStats, binStats) #duplicate data
 binStats$expt = c(rep("1",4),rep("2",4)); #name the first duplicate expt "1" and the next expt "2";
 ```
 
 ## 1) MAUDE: Calculate guide level statistics
-This step takes about a minute to run
+Now we've finally gotten to the part where we're running MAUDE.  To compute guide-level stats, we run `findGuideHitsAllScreens`
+This step takes about a minute to run.
 ```R
 guideLevelStats = findGuideHitsAllScreens(experiments = unique(binReadMat["expt"]), countDataFrame = binReadMat, binStats = binStats, sortBins = c("baseline","high","low","medium"), unsortedBin = "back", nonTargeting = "isNontargeting")
 ```
@@ -94,7 +96,7 @@ But notice how the distributions for the non-targeting guides are off-centre.  T
 p = ggplot(guideLevelStats, aes(x=Z, colour=isNontargeting, linetype=expt)) + geom_density()+theme_classic()+scale_y_continuous(expand=c(0,0)) + geom_vline(xintercept = 0)+xlab("Learned guide expression Z score"); print(p)
 ```
 ![Guide Z-score distributions](CD69_guide_Z_dist.png "Guide Z distributions")
-Now the non-targeting guides are centred at 0, as expected since they are expected to have no effect on expression.
+Now the non-targeting guides are centred at 0, as expected since they have no effect on expression.  
 
 Now that we have guide-level statistics, we can inspect them. We can see there is a high correlation between replicates:
 ```R
@@ -112,45 +114,49 @@ p=ggplot(guideLevelStats, aes(x=PAM_3primeEnd_coord, y=Z)) +geom_point(size=0.5)
 ![Guide locus view](CD69_guide-level_locus_view.png "Guide locus view")
 Here, the DHS peaks are shown in red. Clearly some regions contain many active guides, the majority of which have high Z-scores, indicating CD69 activation.
 
-## 2) Identify active elements
+## 2) MAUDE: Identify active elements
+There are two ways to get element-level statistics, depending on how the screen was done.  If you have regulatory element annotations, you can use `getElementwiseStats` to identify active elements.  If you did a tiling screen, you could use the same, but you can also identify active regions in an unbiased way with `getTilingElementwiseStats`.
 ### 2a) Get element level stats with sliding window
-Now, we can combine adjacent guides in an unbiased way, using a sliding window across the locus to identify regions with more active guides than expected by chance.
+Now, we can combine adjacent guides in an unbiased way, using a sliding window across the locus to identify regions with more active guides than expected by chance. Here we use a sliding window of 200 bp, and the default minimum guide number (5). Any 200 bp with fewer than 5 guides will not be tested.
 
 ```R
+guideLevelStats$chr = "chr12"; # we need to tell it what chromosome our guides are on - they're all on chr12
 slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",chr="chr",nonTargeting = "isNontargeting")
 ```
 
-Now that we have element-level stats, let's inspect them!
+Now that we have element-level stats, let's inspect them! First, let's look at the whole locus.
 ```R
 dhsPos = min(slidingWindowElements$meanZ)*1.05;
 p=ggplot(slidingWindowElements, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0) + geom_segment(data = dhsPeakBED, aes(x=st, xend=en,y=dhsPos, yend=dhsPos), colour="black"); print(p)
 ```
 ![Sliding element locus view](CD69_sliding_element-level_locus_view.png "Sliding element locus view")
-In the above, we see that there are some regions significantly upregulated or down-regulated, which are often shared between the two replicates.
+In the above, we see that there are some regions significantly upregulated or down-regulated, which are often shared between the two replicates. The regions that upregulate CD69 preferentially lie in open chromatin (DHS - black, in the above).
 
-How correlated are the two replicates at the element level?
+How correlated are the effect size estimates for the two replicates at the element level?
 ```R
 slidingWindowElementsByRep = cast(slidingWindowElements, chr + start + end +numGuides ~ expt, value="meanZ")
-p = ggplot(slidingWindowElementsByRep, aes(x=`1`, y=`2`)) + geom_point(size=0.5) + xlab("Replicate 1 element effect Z score") + ylab("Replicate 2 element effect Z score") + ggtitle(sprintf("r = %f",cor(dhsPeakStatsByRep$`1`,dhsPeakStatsByRep$`2`)))+theme_classic(); print(p)
-ggsave(sprintf("%s/CD69_sliding_element_rep1_vs_rep2_Z.png", outDir), width = 3, height=3)
+p = ggplot(slidingWindowElementsByRep, aes(x=`1`, y=`2`)) + geom_point(size=0.5) + xlab("Replicate 1 element effect Z score") + ylab("Replicate 2 element effect Z score") + ggtitle(sprintf("r = %f",cor(slidingWindowElementsByRep$`1`,slidingWindowElementsByRep$`2`)))+theme_classic(); print(p)
 ```
 ![Sliding element Z correlations](CD69_sliding_element_rep1_vs_rep2_Z.png "Sliding element Z correlations")
+Quite highly correlated!
 
 ### 2b) Get element level stats with annotated elements
-Since we have annotated elements anyway, it might help us to identify which guides should be combined.  This would be the only way to do it if we had only targeted these regions to begin with.
+Since we have annotated elements anyway in `dhsPeakBED`, it might help us to identify which guides should be combined.  This would be the only way to do it if we had only targeted these regions to begin with.
 
 ```R
-guideLevelStats$chr = "chr12";
+#the next command annotates our guides with any DHS peak they lie in.
 annotatedGuides = findOverlappingElements(guides = unique(guideLevelStats[!guideLevelStats$isNontargeting, c("PAM_3primeEnd_coord","gRNA_systematic_name","chr")]), elements = dhsPeakBED, elements.start = "st", elements.end = "en", elements.chr = "chr", guides.pos = "PAM_3primeEnd_coord", guides.chr = "chr")
 
 #merge regulatory element annotations back onto guideLevelStats
 guideLevelStats = merge(guideLevelStats, annotatedGuides[c("gRNA_systematic_name", "name")], by="gRNA_systematic_name", all.x=T)
 
+#this is where we are actually running MAUDE to find element-level stats
 dhsPeakStats = getElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, nonTargeting = "isNontargeting", elementIDs = "name") # "name" is the peak IDs from the DHS BED file
 
 #merge peak info back into dhsPeakStats
 dhsPeakStats = merge(dhsPeakStats, dhsPeakBED, by="name");
 ```
+
 Now we can again look at the activity of the elements across the locus:
 ```R
 p=ggplot(dhsPeakStats, aes(x=st, xend=en, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0); print(p)
@@ -165,3 +171,4 @@ p = ggplot(dhsPeakStatsByRep, aes(x=`1`, y=`2`)) + geom_point() + xlab("Replicat
 ```
 ![DHS element Z correlations](CD69_DHS_element_rep1_vs_rep2_Z.png "DHS element Z correlations")
 Again, these are highly correlated.
+In this case, it didn't look like the regulatory element annotations helped our analysis, but that is not always true. 
