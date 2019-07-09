@@ -148,6 +148,8 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   if(!all(sortBins %in% names(countTable))){
     stop(sprintf("Not all sort bins '%s' are present as columns in countTable; did you specify 'sortBins='?", paste(sortBins, collapse=", ")))
   }
+  #the next line resorts curBinBounds to be in the same bin order as sortBins; this is assumed later in the code because sortBins is used to extract the count matrix
+  curBinBounds = curBinBounds[order(as.numeric(factor(as.character(curBinBounds$Bin), levels=sortBins))),]
   if (pseudocount>0){
     for(b in sortBins){
       countTable[b]=countTable[b]+max(1,round(pseudocount*(sum(countTable[b])/1E6)));#add a pseudocount in proportion to depth
