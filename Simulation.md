@@ -2,6 +2,7 @@
 
 The following is an example that relies on simulated data and makes use of the `ggplot2` and `reshape` R packages.  Since there is no data to load for this example, it should be relatively easy to run and to inspect the variables to better understand the desired formats.  This should also help make clear the underlying assumptions of the model since the data are generated with many of these same assumptions.
 
+## Create the simulated experimental data
 Load the required packages and set the seed.  You only need to set the seed if you want your analysis to get exactly the same results as what is shown here.  Otherwise, you can skip this step (and note that if you run things in a different order, the results may differ).
 ```R
 library(ggplot2)
@@ -86,6 +87,8 @@ binReadMat = merge(binReadMat, guideMap[c("gid","NS")], by="gid")
 binReadMat$screen="test"; # here, we're only doing the one screen - this simulation
 binBounds$screen="test";
 ```
+
+## Run MAUDE
 
 Up until now, we have just been building up the data in a way that simulated an actual experiment. With the exception of defining the bin model(s), most of the above is not required (nor even possible, since we're inspecting hidden variables above) for an actual experiment. Only the next two commands would actually be run for a real experiment.
 ```R
