@@ -27,9 +27,10 @@ library(devtools)
 install_github("Carldeboer/MAUDE")
 ```
 # Requirements
-Right now we have two main requirements: 
+Right now we have three main requirements: 
 1. Non-targeting guides are included in the experiment to serve as negative controls and are used for calibrating Z-scores and P-values.
-2. The abundance of the guides must have been measured somehow (either by unsorted cells)
+2. The abundance of the guides must have been measured somehow (usually by sequencing the guide DNA of unsorted cells)
+3. The fractions of cells sorted into each expression bin was quantified
 
 
 # Usage
