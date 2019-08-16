@@ -31,6 +31,13 @@ cellObservations$expression = rnorm(n=nrow(cellObservations), mean=cellObservati
 
 #create the bin model for this experiment - this represents 6 bins, each of which are 10%, where A+B+C catch the bottom ~30% and D+E+F catch the top 30%; in an actual experiment, the true captured fractions should be used here. 
 binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6)))
+if(F){ 
+  # in reality, we shouldn't assume this distribution is exactly normal - we can re-assign expression bin bounds based on quantiles 
+  # of the actual simulated expression distribution.  If you run the next two lines, the answer will improve slightly, but the 
+  # resulting graphs will look slightly different than those below.
+  binBounds$binStartZ = quantile(cellObservations$expression, probs = binBounds$binStartQ);# correct for the actual distribution
+  binBounds$binEndZ = quantile(cellObservations$expression, probs = binBounds$binEndQ);
+}
 
 # select some examples to inspect for both
 exampleNT = sample(guideMap$gid[guideMap$NT],10);# non-targeting
