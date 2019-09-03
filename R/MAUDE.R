@@ -167,6 +167,19 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   for (i in 1:nrow(curNormNBSummaries)){
     #interval: The probability of observing a guide outside of this interval in one of the non-terminal bins is very unlikely, and so estimating a true mean for these is too difficult anyway. Besides, we get some local optima at the extremes for sparsely sampled data.
     temp = optimize(f=function(mu){getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=mu, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])}, interval=c(-4,4), maximum = T)
+    if (is.nan(temp$objective)){
+      message("Mu optimization returned NaN objective: restricting search space")
+      uniformObjectiveEval = data.frame(mu = (0:800)/100 - 4, ll=NA);
+      for (k in 1:nrow(uniformObjectiveEval)){
+        uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = uniformObjectiveEval$mu[k], k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+      }
+      uniformObjectiveEval = uniformObjectiveEval[!is.nan(uniformObjectiveEval$ll),];
+      stopifnot(nrow(uniformObjectiveEval)>=1) # no points in the tested space have valid LLs
+      message(sprintf("New interval = c(%f, %f)", min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)))
+      temp = optimize(f = function(mu) {
+        getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) 
+        }, interval = c(min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)), maximum = T)
+     }
     #TODO: This function can get stuck in local minima. Pseudocounts help prevent this, but it can still happen, resulting in a negative logliklihood ratio (i.e. Null is more likely than optimized alternate).  Usually this happens close to an effect size of 0.  I should still explore other optimization functions (e.g. optim)
     curNormNBSummaries$mean[i]=temp$maximum
     curNormNBSummaries$ll[i]=temp$objective
@@ -179,6 +192,9 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   for (i in 1:nrow(curNormNBSummaries)){
     curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
     curNormNBSummaries$Z[i]=curNormNBSummaries$mean[i]-muNT
+  }
+  if (any(curNormNBSummaries$llRatio<0)){
+    warning("Some log-likelihood ratios are negative! (i.e. optimized mu is less likely to mu=0)")
   }
   return(curNormNBSummaries)
 }
