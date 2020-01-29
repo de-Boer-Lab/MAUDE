@@ -134,11 +134,12 @@ makeBinModel = function(curBinBounds,tailP=0.001){
 #' @param sortBins the names in countTable of the sorting bins.  Defaults to c("A","B","C","D","E","F")
 #' @param unsortedBin the name in countTable of the unsorted bin.  Defaults to "NS"
 #' @param nonTargeting the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param limits the limits to the mu optimization. Defaults to c(-4,4)
 #' @return a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.
 #' @export
 #' @examples
 #' guideLevelStats = findGuideHits(binReadMat, binBounds)
-findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT"){
+findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT", limits=c(-4,4)){
   if(!nonTargeting %in% names(countTable)){
     stop(sprintf("Column '%s' is missing from countTable; did you specify 'nonTargeting='?", nonTargeting))
   }
@@ -166,23 +167,22 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   #for each guide, find the optimal mu given the count data and bin percentages
   for (i in 1:nrow(curNormNBSummaries)){
     #interval: The probability of observing a guide outside of this interval in one of the non-terminal bins is very unlikely, and so estimating a true mean for these is too difficult anyway. Besides, we get some local optima at the extremes for sparsely sampled data.
-    temp = optimize(f=function(mu){getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=mu, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])}, interval=c(-4,4), maximum = T)
-    if (is.nan(temp$objective)){
-      message("Mu optimization returned NaN objective: restricting search space")
-      uniformObjectiveEval = data.frame(mu = (0:800)/100 - 4, ll=NA);
-      for (k in 1:nrow(uniformObjectiveEval)){
-        uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = uniformObjectiveEval$mu[k], k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+    tryCatch(
+      {curOptim = optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = limits[1], upper = limits[2])},
+      error =function(e){
+        message("Mu optimization returned NaN objective: restricting search space")
+        uniformObjectiveEval = data.frame(mu = ((0:800)/400 - 1)*limits[2], ll = NA)
+        for (k in 1:nrow(uniformObjectiveEval)) {
+          uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = uniformObjectiveEval$mu[k], k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+        }
+        uniformObjectiveEval = uniformObjectiveEval[!is.nan(uniformObjectiveEval$ll), ]
+        stopifnot(nrow(uniformObjectiveEval) >= 1) # no points in the tested space have valid LLs
+        message(sprintf("New interval = c(%f, %f)", min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)))
+        curOptim = optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = min(uniformObjectiveEval$mu), upper = max(uniformObjectiveEval$mu))
       }
-      uniformObjectiveEval = uniformObjectiveEval[!is.nan(uniformObjectiveEval$ll),];
-      stopifnot(nrow(uniformObjectiveEval)>=1) # no points in the tested space have valid LLs
-      message(sprintf("New interval = c(%f, %f)", min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)))
-      temp = optimize(f = function(mu) {
-        getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) 
-        }, interval = c(min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)), maximum = T)
-     }
-    #TODO: This function can get stuck in local minima. Pseudocounts help prevent this, but it can still happen, resulting in a negative logliklihood ratio (i.e. Null is more likely than optimized alternate).  Usually this happens close to an effect size of 0.  I should still explore other optimization functions (e.g. optim)
-    curNormNBSummaries$mean[i]=temp$maximum
-    curNormNBSummaries$ll[i]=temp$objective
+    )
+    curNormNBSummaries$mean[i]=  curOptim$par
+    curNormNBSummaries$ll[i]  = -curOptim$value
   }
   if (sum(curNormNBSummaries[[nonTargeting]]) == 0){
     warning(sprintf("Cannot calculate logliklihood ratio or Z score without non-targeting guides and %s indicates there are no such guides",nonTargeting))
@@ -191,13 +191,17 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[nonTargeting]]]) # mean of the non-targeting guides mean expressions
   for (i in 1:nrow(curNormNBSummaries)){
     curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+    if (!is.finite(curNormNBSummaries$llRatio[i])){
+      warning(sprintf("Got non-finite llRatio: %f; %f - %f", curNormNBSummaries$llRatio[i],curNormNBSummaries$ll[i] , getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])))
+    }
     curNormNBSummaries$Z[i]=curNormNBSummaries$mean[i]-muNT
   }
-  if (any(curNormNBSummaries$llRatio<0)){
+  if (any(curNormNBSummaries$llRatio[!is.na(curNormNBSummaries$llRatio)]<0)){
     warning("Some log-likelihood ratios are negative! (i.e. optimized mu is less likely to mu=0)")
   }
   return(curNormNBSummaries)
-}
+} 
+
 #checkUsage(findGuideHits)
 
 
