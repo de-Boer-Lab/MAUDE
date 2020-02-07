@@ -172,3 +172,15 @@ p = ggplot(dhsPeakStatsByRep, aes(x=`1`, y=`2`)) + geom_point() + xlab("Replicat
 ![DHS element Z correlations](CD69_DHS_element_rep1_vs_rep2_Z.png "DHS element Z correlations")
 Again, these are highly correlated.
 In this case, it didn't look like the regulatory element annotations helped our analysis, but that is not always true. 
+
+Let's see investicate why this might be by looking at the guide effect sizes for the guides within each DHS element.
+```R
+p=ggplot(guideLevelStats, aes(x=Z, group=name, colour=name == "chr12:9912678-9915275")) + stat_ecdf(alpha=0.3)+ 
+  stat_ecdf(data=guideLevelStats[!is.na(guideLevelStats$name) & guideLevelStats$name=="chr12:9912678-9915275",], size=1)+
+  facet_grid(expt ~.) + theme_classic() + xlab("Guide Z score")+scale_y_continuous(expand=c(0,0)) + 
+  scale_x_continuous(expand=c(0,0)) + scale_colour_manual(values=c("black","red")) + labs(colour = "CD69 promoter?")+ylab("Cumulative fraction"); print(p)
+```
+![Guide Z score CDFs for elements](CD69_guide_Z_dist_per_element.png "Guide Z score CDFs for elements")
+Here, the promoter DHS peak is in red and all the other DHS peaks are in black. You can appreciate that the promoter tends to have among the most influencial guides (rightward shift in the CDF curves). Even for the promoter, there is substantial variability in the estimated guide effect sizes, ranging from not doing anything (near 0) to pretty sizable effects (>3).  This is probably a combination of factors, including experimental noise, how effective each guide targets the region, and the effect of actually targeting each region.
+
+
