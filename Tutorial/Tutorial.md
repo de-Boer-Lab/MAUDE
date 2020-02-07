@@ -183,4 +183,10 @@ p=ggplot(guideLevelStats, aes(x=Z, group=name, colour=name == "chr12:9912678-991
 ![Guide Z score CDFs for elements](CD69_guide_Z_dist_per_element.png "Guide Z score CDFs for elements")
 Here, the promoter DHS peak is in red and all the other DHS peaks are in black. You can appreciate that the promoter tends to have among the most influencial guides (rightward shift in the CDF curves). Even for the promoter, there is substantial variability in the estimated guide effect sizes, ranging from not doing anything (near 0) to pretty sizable effects (>3).  This is probably a combination of factors, including experimental noise, how effective each guide targets the region, and the effect of actually targeting each region.
 
-
+Let's zoom in on the promoter to see what exactly is happening here.
+```R
+p=ggplot(guideLevelStats[!is.na(guideLevelStats$name) & guideLevelStats$name=="chr12:9912678-9915275",], aes(x=PAM_3primeEnd_coord, y=Z, colour=expt)) +
+  geom_point(size=1)+ geom_line()+theme_classic() + xlab("Genomic position") + ylab("Guide Z score")+ geom_vline(xintercept = 9913497, colour="black"); print(p)
+```
+![Guide Z scores in the promoter](CD69_guide_Zs_in_promoter.png "Guide Z scores in the promoter")
+Here, I've marked the transcription start site with a vertical black line. CD69 is an antisense gene, so it is transcribed to the left of the black line. The guides targeting the 5' UTR of CD69 (left of black line) appear to be less effective than those in the promoter (right of black line), which is expected. The high correlation in the guide effect sizes between the two experiments indicates that many of the low-effect size guides cannot be attributed to experimental noise. So probably most of the signal diversity within the promoter DHS is attributable to how effective the guide is at targeting the DNA, and how effective the activation domain of CRISPRa is where it is bound.
