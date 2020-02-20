@@ -140,6 +140,7 @@ makeBinModel = function(curBinBounds,tailP=0.001){
 #' @examples
 #' guideLevelStats = findGuideHits(binReadMat, binBounds)
 findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT", limits=c(-4,4)){
+  if(nrow(curBinBounds) > nrow(unique(curBinBounds))){ stop("Duplicate rows in curBinBounds table!")}
   if(!nonTargeting %in% names(countTable)){
     stop(sprintf("Column '%s' is missing from countTable; did you specify 'nonTargeting='?", nonTargeting))
   }
