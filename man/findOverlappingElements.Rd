@@ -4,9 +4,15 @@
 \alias{findOverlappingElements}
 \title{Find overlaps between guides and annotated elements}
 \usage{
-findOverlappingElements(guides, elements, guides.pos = "pos",
-  guides.chr = "chr", elements.start = "st", elements.end = "en",
-  elements.chr = "chr")
+findOverlappingElements(
+  guides,
+  elements,
+  guides.pos = "pos",
+  guides.chr = "chr",
+  elements.start = "st",
+  elements.end = "en",
+  elements.chr = "chr"
+)
 }
 \arguments{
 \item{guides}{a data.frame containing guide information including the guides genomic position in a column named guides.pos}

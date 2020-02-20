@@ -4,9 +4,16 @@
 \alias{findGuideHits}
 \title{Calculate guide-level statistics for a single screen}
 \usage{
-findGuideHits(countTable, curBinBounds, pseudocount = 10,
-  meanFunction = mean, sortBins = c("A", "B", "C", "D", "E", "F"),
-  unsortedBin = "NS", nonTargeting = "NT")
+findGuideHits(
+  countTable,
+  curBinBounds,
+  pseudocount = 10,
+  meanFunction = mean,
+  sortBins = c("A", "B", "C", "D", "E", "F"),
+  unsortedBin = "NS",
+  nonTargeting = "NT",
+  limits = c(-4, 4)
+)
 }
 \arguments{
 \item{countTable}{a table containing one column for each bin (A-F) and another column for non-targeting guide (logical-"NT"), and unsorted abundance (NS)}
@@ -22,6 +29,8 @@ findGuideHits(countTable, curBinBounds, pseudocount = 10,
 \item{unsortedBin}{the name in countTable of the unsorted bin.  Defaults to "NS"}
 
 \item{nonTargeting}{the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
+
+\item{limits}{the limits to the mu optimization. Defaults to c(-4,4)}
 }
 \value{
 a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.

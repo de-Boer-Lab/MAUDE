@@ -4,9 +4,17 @@
 \alias{getTilingElementwiseStats}
 \title{Find active elements by sliding window}
 \usage{
-getTilingElementwiseStats(experiments, normNBSummaries, tails = "both",
-  location = "pos", chr = "chr", window = 500, minGuides = 5,
-  nonTargeting = "NT", ...)
+getTilingElementwiseStats(
+  experiments,
+  normNBSummaries,
+  tails = "both",
+  location = "pos",
+  chr = "chr",
+  window = 500,
+  minGuides = 5,
+  nonTargeting = "NT",
+  ...
+)
 }
 \arguments{
 \item{experiments}{a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries}

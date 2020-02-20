@@ -4,8 +4,14 @@
 \alias{getElementwiseStats}
 \title{Find active elements by annotation}
 \usage{
-getElementwiseStats(experiments, normNBSummaries, elementIDs, tails = "both",
-  nonTargeting = "NT", ...)
+getElementwiseStats(
+  experiments,
+  normNBSummaries,
+  elementIDs,
+  tails = "both",
+  nonTargeting = "NT",
+  ...
+)
 }
 \arguments{
 \item{experiments}{a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries}
