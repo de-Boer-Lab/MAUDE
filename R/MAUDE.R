@@ -76,7 +76,7 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   #message(sprintf("observed fractions = %s",paste(as.character(((x/k))),collapse=", ")))
   for (i in 1:nrow(nullModel)){
     #dnbinom(x = number of reads for this guide, size = number of reads total, prob= probability of getting a read at each drawing)
-    likelihood = likelihood  + dnbinom(x=x[i], size=k[i], prob =1- binFractions[i], log=T)
+    suppressWarnings(likelihood = likelihood  + dnbinom(x=x[i], size=k[i], prob =1- binFractions[i], log=T))
   }
   return(likelihood)
 }
