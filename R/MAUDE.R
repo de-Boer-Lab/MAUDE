@@ -174,19 +174,21 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   
   #for each guide, find the optimal mu given the count data and bin percentages
   for (i in 1:nrow(curNormNBSummaries)){
+    curOptim=list()
     #interval: The probability of observing a guide outside of this interval in one of the non-terminal bins is very unlikely, and so estimating a true mean for these is too difficult anyway. Besides, we get some local optima at the extremes for sparsely sampled data.
     tryCatch(
       {curOptim = optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = limits[1], upper = limits[2])},
       error =function(e){
         message("Mu optimization returned NaN objective: restricting search space")
-        uniformObjectiveEval = data.frame(mu = ((0:800)/400 - 1)*limits[2], ll = NA)
+        uniformObjectiveEval = data.frame(mu = ((0:1000)/1000 - 1) * (limits[2] - limits[1]) + limits[2], ll = NA)
         for (k in 1:nrow(uniformObjectiveEval)) {
           uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = uniformObjectiveEval$mu[k], k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i])
         }
+        uniformObjectiveEval = uniformObjectiveEval[!is.infinite(uniformObjectiveEval$ll), ]
         uniformObjectiveEval = uniformObjectiveEval[!is.nan(uniformObjectiveEval$ll), ]
         stopifnot(nrow(uniformObjectiveEval) >= 1) # no points in the tested space have valid LLs
         message(sprintf("New interval = c(%f, %f)", min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)))
-        curOptim = optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = min(uniformObjectiveEval$mu), upper = max(uniformObjectiveEval$mu))
+        curOptim <<- optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = min(uniformObjectiveEval$mu), upper = max(uniformObjectiveEval$mu))
       }
     )
     curNormNBSummaries$mean[i]=  curOptim$par
