@@ -89,8 +89,13 @@ allDataCounts[is.na(allDataCounts)]=0; # fill in 0s for guides not observed at a
 #now you just need to label the non-targeting guides and this will be in the correct format
 ```
 
+## Encountering problems
+Should you encounter a problem using MAUDE:
+1. [Consult the Common Problems](CommonProblems.md)
+2. [Submit an Issue](https://github.com/Carldeboer/MAUDE/issues)
+3. Contact the authors.
+
 
 # Citation
-Coming soon to the bioRxiv.  
-For now, please cite:
-> Carl G de Boer, John Ray, Nir Hacohen, and Aviv Regev, MAUDE, unpublished
+Please cite:
+> Carl G de Boer*, John Ray*, Nir Hacohen, and Aviv Regev, MAUDE, bioRxiv. https://www.biorxiv.org/content/10.1101/819649v1
