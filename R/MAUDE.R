@@ -150,6 +150,13 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   if(!all(sortBins %in% names(countTable))){
     stop(sprintf("Not all sort bins '%s' are present as columns in countTable; did you specify 'sortBins='?", paste(sortBins, collapse=", ")))
   }
+  if(!all(curBinBounds$Bin %in% sortBins)){
+    message("Warning: curBinBounds contained bins that are not present in sortBins: removing these.")
+    curBinBounds = curBinBounds[curBinBounds$Bin %in% sortBins,]
+  }
+  if(any((curBinBounds$binEndQ-curBinBounds$binStartQ)<=0)){
+    stop("Some sort bins cover <=0% of the distribution")
+  }
   #the next line resorts curBinBounds to be in the same bin order as sortBins; this is assumed later in the code because sortBins is used to extract the count matrix
   curBinBounds = curBinBounds[order(as.numeric(factor(as.character(curBinBounds$Bin), levels=sortBins))),]
   if (pseudocount>0){
