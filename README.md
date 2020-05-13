@@ -40,6 +40,8 @@ We provide two tutorials on how to run a MAUDE analysis in R here:
 1. [Re-analysis of CD69 screen data](Tutorial/Tutorial.md)
 2. [Analysis of a simulated screen](Simulation.md)
 
+For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://carldeboer.github.io/MAUDE/Evaluation/method_evaluation.html)
+
 ## Quantifying guide DNA abundance
 After sequencing, you get fastqs, one per sorting bin and experiment.  The first step for a MAUDE analysis is to quantify the number of guides residing in each bin.  Here, we provide some guidance as to how to do this.
 
