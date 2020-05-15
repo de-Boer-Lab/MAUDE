@@ -12,6 +12,9 @@ library(openxlsx)
 library(reshape)
 library(ggplot2)
 library(MAUDE)
+library(GenomicRanges)
+library(ggbio)
+library(Homo.sapiens)
 ```
 
 ## Load CD69 screen count data from Simeonov Supplementary Table 1
@@ -42,9 +45,9 @@ We can use this as a reference point with which to view our results, and to anno
 
 ```R
 dhsPeakBED = read.table('https://raw.githubusercontent.com/Carldeboer/MAUDE/master/Tutorial/Encode_Jurkat_DHS_both.merged.bed', stringsAsFactors=F, row.names=NULL, sep="\t", header=F)
-names(dhsPeakBED) = c("chr","st","en");
+names(dhsPeakBED) = c("chrom","start","end");
 #add a column to include peak names
-dhsPeakBED$name = paste(dhsPeakBED$chr, paste(dhsPeakBED$st, dhsPeakBED$en, sep="-"), sep=":")
+dhsPeakBED$name = paste(dhsPeakBED$chrom, paste(dhsPeakBED$start, dhsPeakBED$end, sep="-"), sep=":")
 ```
 
 ## Read in and inspect bin fractions
@@ -109,7 +112,7 @@ They are pretty highly correlated at the effect size.  Now let's map the results
 
 ```R
 dhsPos = min(guideLevelStats$Z)*1.05;
-p=ggplot(guideLevelStats, aes(x=PAM_3primeEnd_coord, y=Z)) +geom_point(size=0.5)+facet_grid(expt ~.)+ geom_segment(data = dhsPeakBED, aes(x=st, xend=en,y=dhsPos, yend=dhsPos), colour="red") + theme_classic() + xlab("Genomic position") + ylab("Guide Z score"); print(p)
+p=ggplot(guideLevelStats, aes(x=PAM_3primeEnd_coord, y=Z)) +geom_point(size=0.5)+facet_grid(expt ~.)+ geom_segment(data = dhsPeakBED, aes(x=start, xend=end,y=dhsPos, yend=dhsPos), colour="red") + theme_classic() + xlab("Genomic position") + ylab("Guide Z score"); print(p)
 ```
 ![Guide locus view](CD69_guide-level_locus_view.png "Guide locus view")
 Here, the DHS peaks are shown in red. Clearly some regions contain many active guides, the majority of which have high Z-scores, indicating CD69 activation.
@@ -120,21 +123,22 @@ There are two ways to get element-level statistics, depending on how the screen 
 Now, we can combine adjacent guides in an unbiased way, using a sliding window across the locus to identify regions with more active guides than expected by chance. Here we use a sliding window of 200 bp, and the default minimum guide number (5). Any 200 bp with fewer than 5 guides will not be tested.
 
 ```R
-guideLevelStats$chr = "chr12"; # we need to tell it what chromosome our guides are on - they're all on chr12
-slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",chr="chr",nonTargeting = "isNontargeting")
+guideLevelStats$chrom = "chr12"; # we need to tell it what chromosome our guides are on - they're all on chr12
+slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",chr="chrom",nonTargeting = "isNontargeting")
+names(slidingWindowElements)[names(slidingWindowElements)=="chr"]="chrom" #override the default chromosome field 'chr' with the GRanges compatible 'chrom'
 ```
 
 Now that we have element-level stats, let's inspect them! First, let's look at the whole locus.
 ```R
 dhsPos = min(slidingWindowElements$meanZ)*1.05;
-p=ggplot(slidingWindowElements, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0) + geom_segment(data = dhsPeakBED, aes(x=st, xend=en,y=dhsPos, yend=dhsPos), colour="black"); print(p)
+p=ggplot(slidingWindowElements, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0) + geom_segment(data = dhsPeakBED, aes(x=start, xend=end,y=dhsPos, yend=dhsPos), colour="black"); print(p)
 ```
 ![Sliding element locus view](CD69_sliding_element-level_locus_view.png "Sliding element locus view")
 In the above, we see that there are some regions significantly upregulated or down-regulated, which are often shared between the two replicates. The regions that upregulate CD69 preferentially lie in open chromatin (DHS - black, in the above).
 
 How correlated are the effect size estimates for the two replicates at the element level?
 ```R
-slidingWindowElementsByRep = cast(slidingWindowElements, chr + start + end +numGuides ~ expt, value="meanZ")
+slidingWindowElementsByRep = cast(slidingWindowElements, chrom + start + end +numGuides ~ expt, value="meanZ")
 p = ggplot(slidingWindowElementsByRep, aes(x=`1`, y=`2`)) + geom_point(size=0.5) + xlab("Replicate 1 element effect Z score") + ylab("Replicate 2 element effect Z score") + ggtitle(sprintf("r = %f",cor(slidingWindowElementsByRep$`1`,slidingWindowElementsByRep$`2`)))+theme_classic(); print(p)
 ```
 ![Sliding element Z correlations](CD69_sliding_element_rep1_vs_rep2_Z.png "Sliding element Z correlations")
@@ -145,7 +149,7 @@ Since we have annotated elements anyway in `dhsPeakBED`, it might help us to ide
 
 ```R
 #the next command annotates our guides with any DHS peak they lie in.
-annotatedGuides = findOverlappingElements(guides = unique(guideLevelStats[!guideLevelStats$isNontargeting, c("PAM_3primeEnd_coord","gRNA_systematic_name","chr")]), elements = dhsPeakBED, elements.start = "st", elements.end = "en", elements.chr = "chr", guides.pos = "PAM_3primeEnd_coord", guides.chr = "chr")
+annotatedGuides = findOverlappingElements(guides = unique(guideLevelStats[!guideLevelStats$isNontargeting, c("PAM_3primeEnd_coord","gRNA_systematic_name","chrom")]), elements = dhsPeakBED, elements.start = "start", elements.end = "end", elements.chr = "chrom", guides.pos = "PAM_3primeEnd_coord", guides.chr = "chrom")
 
 #merge regulatory element annotations back onto guideLevelStats
 guideLevelStats = merge(guideLevelStats, annotatedGuides[c("gRNA_systematic_name", "name")], by="gRNA_systematic_name", all.x=T)
@@ -159,7 +163,7 @@ dhsPeakStats = merge(dhsPeakStats, dhsPeakBED, by="name");
 
 Now we can again look at the activity of the elements across the locus:
 ```R
-p=ggplot(dhsPeakStats, aes(x=st, xend=en, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0); print(p)
+p=ggplot(dhsPeakStats, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0); print(p)
 ```
 ![DHS element locus view](CD69_DHS_element-level_locus_view.png "DHS element locus view")
 
@@ -189,4 +193,73 @@ p=ggplot(guideLevelStats[!is.na(guideLevelStats$name) & guideLevelStats$name=="c
   geom_point(size=1)+ geom_line()+theme_classic() + xlab("Genomic position") + ylab("Guide Z score")+ geom_vline(xintercept = 9913497, colour="black"); print(p)
 ```
 ![Guide Z scores in the promoter](CD69_guide_Zs_in_promoter.png "Guide Z scores in the promoter")
+
 Here, I've marked the transcription start site with a vertical black line. CD69 is an antisense gene, so it is transcribed to the left of the black line. The guides targeting the 5' UTR of CD69 (left of black line) appear to be less effective than those in the promoter (right of black line), which is expected. The high correlation in the guide effect sizes between the two experiments indicates that many of the low-effect size guides cannot be attributed to experimental noise. So probably most of the signal diversity within the promoter DHS is attributable to how effective the guide is at targeting the DNA, and how effective the activation domain of CRISPRa is where it is bound.
+
+Now let's look more closely at the guides and select a few that work especially well.
+```R
+p=ggplot(guideEffectsByRep[guideEffectsByRep$PAM_3primeEnd_coord < 9915275 & guideEffectsByRep$PAM_3primeEnd_coord > 9912678,], aes(x=`2`, y=`1`))+geom_point()+geom_text(data=guideEffectsByRep[guideEffectsByRep$PAM_3primeEnd_coord < 9915275 & guideEffectsByRep$PAM_3primeEnd_coord > 9912678 & guideEffectsByRep$`1`>2 & guideEffectsByRep$`2`>2,], aes(label=gRNA_systematic_name))+theme_classic()+xlab("Replicate 2 guide Z score") + ylab("Replicate 1 guide Z score"); print(p) 
+
+```
+![Best guides in promoter](CD69_best_guides.png "Best promoter guides")
+
+We can see that, although there are four guides that have a large effect in one replicate, they don't have as great an effect in the other. Here, I've labeled the IDs of three guides that have a Z score over two in both replicates. If I were going to follow up targeting the CD69 promoter with more guides, these are the ones I would use.
+
+`GenomicRanges` is a great package to work with data associated with genomic coordinates.  First, let's restructure our tiling element data.frame so that there is only one row per region and there is one of each data field for each replicate. 
+
+```R
+slidingWindowElementsByReplicate = cast(melt(slidingWindowElements, id.vars=c("expt","numGuides","chrom","start","end")), numGuides+chrom+start+end ~ variable+expt, value="value")
+head(slidingWindowElementsByReplicate)
+```
+```
+  numGuides chrom   start     end  stoufferZ_1 stoufferZ_2      meanZ_1     meanZ_2 significanceZ_1 significanceZ_2  p.value_1
+1         5 chr12 9882993 9883182 -0.009472366 -0.23953341 -0.004236171 -0.10712260     -0.06237373      -1.1481439 0.47513261
+2         5 chr12 9888047 9888212 -0.213765598 -0.35832774 -0.095598882 -0.16024904     -1.40760595      -1.7175550 0.07962389
+3         5 chr12 9893958 9894158  0.147176396  0.13554497  0.065819285  0.06061755      0.96912867       0.6497012 0.16624050
+4         5 chr12 9898697 9898894  0.112898517 -0.03747552  0.050489752 -0.01675956      0.74341533      -0.1796296 0.22861513
+5         5 chr12 9898702 9898898  0.135955105 -0.03142427  0.060800971 -0.01405336      0.89523860      -0.1506244 0.18532978
+6         5 chr12 9901267 9901451 -0.021920411 -0.08749781 -0.009803106 -0.03913021     -0.14434175      -0.4193990 0.44261531
+  p.value_2     FDR_1     FDR_2
+1 0.1254546 0.9771498 0.4344497
+2 0.0429389 0.3389303 0.2207419
+3 0.2579426 0.5546233 0.6732716
+4 0.4287217 0.6691416 0.9149289
+5 0.4401360 0.5908959 0.9263483
+6 0.3374623 0.9456464 0.7964048
+```
+
+We can convert our data structures to `GRanges` objects as easily as this:
+
+```R
+slidingWindowElementsByReplicateGR = GRanges(as.data.frame(slidingWindowElementsByReplicate)) #casting to data.frame is only needed if using cast
+```
+
+Now let's label those ranges that were significant in both replicates, and merge overlapping significant ranges to get a set of expanded active regions.
+
+```R
+#require that both replicates are significant at an FDR of 0.1 and that the signs agree
+slidingWindowElementsByReplicateGR$significantUp   = slidingWindowElementsByReplicateGR$FDR_1< 0.01 & slidingWindowElementsByReplicateGR$FDR_2 < 0.01 & slidingWindowElementsByReplicateGR$meanZ_1 > 0 &  slidingWindowElementsByReplicateGR$meanZ_2 > 0; 
+slidingWindowElementsByReplicateGR$significantDown = slidingWindowElementsByReplicateGR$FDR_1< 0.01 & slidingWindowElementsByReplicateGR$FDR_2 < 0.01 & slidingWindowElementsByReplicateGR$meanZ_1 < 0 &  slidingWindowElementsByReplicateGR$meanZ_2 < 0;
+
+#merge overlapping regions in each set
+overlappingSlidingWindowElementsUp =reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantUp])
+overlappingSlidingWindowElementsDown =reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantDown])
+```
+
+Now let's plot it all together as a genome browser track!
+
+```R
+
+#which gene models do I want to plot?
+data(genesymbol, package = "biovizBase")
+wh <- genesymbol[c("CD69", "CLECL1", "KLRF1", "CLEC2D","CLEC2B")]
+wh <- range(wh, ignore.strand = TRUE)
+
+#make the genome tracks
+tracks(autoplot(Homo.sapiens, which = wh, gap.geom="chevron"), autoplot(overlappingSlidingWindowElementsUp, fill="red"), autoplot(overlappingSlidingWindowElementsDown, fill="blue"), heights=c(5,2,2)) + theme_classic()
+```
+
+![Genome track](CD69_ggbio_locus.png "Genome track")
+
+Here, the red are CD69-activating regions, blue are CD69-repressing regions.
+
