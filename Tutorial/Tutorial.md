@@ -84,7 +84,7 @@ binStats$expt = c(rep("1",4),rep("2",4)); #name the first duplicate expt "1" and
 Now we've finally gotten to the part where we're running MAUDE.  To compute guide-level stats, we run `findGuideHitsAllScreens`
 This step takes about a minute to run.
 ```R
-guideLevelStats = findGuideHitsAllScreens(experiments = unique(binReadMat["expt"]), countDataFrame = binReadMat, binStats = binStats, sortBins = c("baseline","high","low","medium"), unsortedBin = "back", nonTargeting = "isNontargeting")
+guideLevelStats = findGuideHitsAllScreens(experiments = unique(binReadMat["expt"]), countDataFrame = binReadMat, binStats = binStats, sortBins = c("baseline","high","low","medium"), unsortedBin = "back", negativeControl = "isNontargeting")
 ```
 Here, we calculated the mean expression of each guide
 ```R
@@ -124,7 +124,7 @@ Now, we can combine adjacent guides in an unbiased way, using a sliding window a
 
 ```R
 guideLevelStats$chrom = "chr12"; # we need to tell it what chromosome our guides are on - they're all on chr12
-slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",chr="chrom",nonTargeting = "isNontargeting")
+slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",chr="chrom",negativeControl = "isNontargeting")
 names(slidingWindowElements)[names(slidingWindowElements)=="chr"]="chrom" #override the default chromosome field 'chr' with the GRanges compatible 'chrom'
 ```
 
@@ -155,7 +155,7 @@ annotatedGuides = findOverlappingElements(guides = unique(guideLevelStats[!guide
 guideLevelStats = merge(guideLevelStats, annotatedGuides[c("gRNA_systematic_name", "name")], by="gRNA_systematic_name", all.x=T)
 
 #this is where we are actually running MAUDE to find element-level stats
-dhsPeakStats = getElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, nonTargeting = "isNontargeting", elementIDs = "name") # "name" is the peak IDs from the DHS BED file
+dhsPeakStats = getElementwiseStats(experiments = unique(binReadMat["expt"]), normNBSummaries = guideLevelStats, negativeControl = "isNontargeting", elementIDs = "name") # "name" is the peak IDs from the DHS BED file
 
 #merge peak info back into dhsPeakStats
 dhsPeakStats = merge(dhsPeakStats, dhsPeakBED, by="name");
