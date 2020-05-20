@@ -213,7 +213,7 @@ for (e in unique(binFractionsA20$expt)){
   }
   curBins2$Bin = as.character(curBins2$Bin);
   curCountMat = cast(curA20CountData, seq + NT + gID +pos + screen ~ bin, value="count")
-  guideLevelStats = findGuideHitsAllScreens(experiments = unique(curCountMat["screen"]), countDataFrame = curCountMat, binStats = curBins2, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT")
+  guideLevelStats = findGuideHitsAllScreens(experiments = unique(curCountMat["screen"]), countDataFrame = curCountMat, binStats = curBins2, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", negativeControl="NT")
   
   guideLevelStatsCast = cast(guideLevelStats, gID + pos+NT ~ screen, value="Z")
   #names(guideLevelStatsCast)[4:ncol(guideLevelStatsCast)]=sprintf("s%i", 1:(ncol(guideLevelStatsCast)-3))
