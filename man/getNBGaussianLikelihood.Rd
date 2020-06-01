@@ -23,8 +23,16 @@ getNBGaussianLikelihood(x, mu, k, sigma = 1, nullModel, libFract)
 the log likelihood
 }
 \description{
-Uses a normal distribution (N(mu,sigma)) to estimate how many reads are expected per bin under nullModel, and calculates the log likelihood under a negative binomial model.
+Uses a normal distribution (N(mu,sigma)) to estimate how many reads are expected per bin under nullModel, and calculates the log likelihood under a negative binomial model. This function is usually not used directly.
 }
 \examples{
 #usually not used directly
+#make a bin sorting model with 6 10\% bins
+curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+readsForGuideX =c(10,20,30,100,200,100); #the reads for this guide
+getNBGaussianLikelihood(x=readsForGuideX, mu=1, k=rep(1E6,6), sigma=1, nullModel=curSortBins, 
+  libFract = 50/1E6)
+getNBGaussianLikelihood(x=readsForGuideX, mu=-1, k=rep(1E6,6), sigma=1, nullModel=curSortBins, 
+  libFract = 50/1E6)
+#mu=1 is far more likely (closer to 0) than mu=-1 for this distribution of reads
 }

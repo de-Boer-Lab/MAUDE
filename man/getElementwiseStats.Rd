@@ -9,7 +9,7 @@ getElementwiseStats(
   normNBSummaries,
   elementIDs,
   tails = "both",
-  nonTargeting = "NT",
+  negativeControl = "NT",
   ...
 )
 }
@@ -22,7 +22,7 @@ getElementwiseStats(
 
 \item{tails}{whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")}
 
-\item{nonTargeting}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
+\item{negativeControl}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
 
 \item{...}{other parameters for getZScalesWithNTGuides}
 }
@@ -30,9 +30,60 @@ getElementwiseStats(
 a data.frame containing the statistics for all elements
 }
 \description{
-Tests guides for activity by considering a sliding window across the tested region and including all guides within the window for the test.
+Tests guides for activity by considering a set of provided regulatory elements within the region and considering all guides within each region for the test.
 }
 \examples{
-allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
-elementLevelStats = getElementwiseStats(unique(allGuideLevelStats["screen"]),allGuideLevelStats, elementIDs="element",tails="upper")
+fakeReadData = data.frame(id=rep(1:10000,2), expt=c(rep("e1",10000), rep("e2",10000)), 
+                          A=rpois(20000, lambda = 100), B=rpois(20000, lambda = 100),
+                          C=rpois(20000, lambda = 100), D=rpois(20000, lambda = 100),
+                          E=rpois(20000, lambda = 100), F=rpois(20000, lambda = 100),
+                          NotSorted=rpois(20000, lambda = 100), 
+                          position = rep(c(rep(NA, 1000), (1:9000)*10 + 5E7),2), 
+                          chr=rep(c(rep(NA, 1000), rep("chr1", 9000)),2), 
+                          negControl = rep(c(rep(TRUE,1000),rep(FALSE,9000)),2), 
+                          stringsAsFactors = FALSE)
+#make one region an "enhancer" and "repressor" by skewing the reads 
+enhancers = data.frame(name = c("enh","repr"), start = c(40000, 70000) + 5E7, 
+  end = c(40500, 70500) + 5E7, chr="chr1")
+enhancerData = findOverlappingElements(fakeReadData[!is.na(fakeReadData$position),], 
+  enhancers, guides.pos = "position",elements.start = "start", elements.end = "end")
+readSkew=1.2 # we will scale up/down the reads in ABC and DEF by this amount
+enhancerData[enhancerData$name=="enh", c("D","E","F")] = 
+  floor(readSkew* enhancerData[enhancerData$name=="enh", c("D","E","F")]);
+enhancerData[enhancerData$name=="repr", c("D","E","F")] = 
+  floor(enhancerData[enhancerData$name=="repr", c("D","E","F")]/readSkew);
+enhancerData[enhancerData$name=="repr", c("A","B","C")] = 
+  floor(readSkew* enhancerData[enhancerData$name=="repr", c("A","B","C")]);
+enhancerData[enhancerData$name=="enh", c("A","B","C")] = 
+  floor(enhancerData[enhancerData$name=="enh", c("A","B","C")]/readSkew);
+#replace the original data for these elements
+fakeReadData = rbind(fakeReadData[!(fakeReadData$id \%in\% enhancerData$id), ],
+  enhancerData[names(fakeReadData)])
+#make experiments and sorting strategy
+expts = unique(fakeReadData["expt"]);
+curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+                                    binStats = curSortBins, unsortedBin = "NotSorted",
+                                    negativeControl="negControl")
+
+potentialEnhancers = rbind(enhancers, data.frame(name = sprintf("EC\%i", 1:16), 
+  start = (5:20)*6000 + 5E7, end = (5:20)*6000 + 5E7+500, chr="chr1"))
+#annotate guides with elements, but first get all non-targeting guides
+guideHitsAnnotated = guideHits[is.na(guideHits$position),];
+guideHitsAnnotated$name=NA; guideHitsAnnotated$start=NA; 
+guideHitsAnnotated$end=NA; guideHitsAnnotated$chr=NA;
+guideHitsAnnotated = rbind(guideHitsAnnotated, 
+  findOverlappingElements(guideHits[!is.na(guideHits$position),], potentialEnhancers, 
+    guides.pos = "position",elements.start = "start", elements.end = "end") )
+allElementHits = getElementwiseStats(experiments = expts, normNBSummaries = guideHitsAnnotated, 
+  elementIDs = "name", tails = "both", negativeControl = "negControl")
+allElementHits = merge(allElementHits, potentialEnhancers, by="name")
+if(require("ggplot2")){
+  p=ggplot(allElementHits, aes(x=start, xend=end, y=significanceZ, yend=significanceZ, 
+    colour=FDR<0.01, label=name)) + geom_segment()+
+    geom_text(data= allElementHits[allElementHits$FDR<0.01,], colour="black") + 
+    facet_grid(expt ~ .); print(p)
+}
 }

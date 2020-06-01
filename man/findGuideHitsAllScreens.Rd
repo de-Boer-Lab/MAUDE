@@ -22,5 +22,17 @@ guide-level stats for all experiments
 Uses findGuideHits to find guide-level stats for each unique entry in 'experiments'.
 }
 \examples{
- allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
+ fakeReadData = data.frame(id=rep(1:1000,2), expt=c(rep("e1",1000), rep("e2",1000)), 
+                          A=rpois(2000, lambda = 100), B=rpois(2000, lambda = 100),
+                          C=rpois(2000, lambda = 100), D=rpois(2000, lambda = 100),
+                          E=rpois(2000, lambda = 100), F=rpois(2000, lambda = 100),
+                          NotSorted=rpois(2000, lambda = 100), 
+                          negControl = rep(rnorm(1000)>0,2), stringsAsFactors = FALSE)
+expts = unique(fakeReadData["expt"]);
+curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+                                    binStats = curSortBins, unsortedBin = "NotSorted",
+                                    negativeControl="negControl")
 }

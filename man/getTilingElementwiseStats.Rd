@@ -12,7 +12,7 @@ getTilingElementwiseStats(
   chr = "chr",
   window = 500,
   minGuides = 5,
-  nonTargeting = "NT",
+  negativeControl = "NT",
   ...
 )
 }
@@ -31,7 +31,7 @@ getTilingElementwiseStats(
 
 \item{minGuides}{the minimum number of guides in a window required for a test (defaults to 5)}
 
-\item{nonTargeting}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
+\item{negativeControl}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
 
 \item{...}{other parameters for getZScalesWithNTGuides}
 }
@@ -42,6 +42,47 @@ a data.frame containing the statistics for all windows tested for activity
 Tests guides for activity by considering a sliding window across the tested region and including all guides within the window for the test.
 }
 \examples{
-allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
-elementLevelStatsTiling = getTilingElementwiseStats(myScreens, allGuideLevelStats, tails = "upper")
+fakeReadData = data.frame(id=rep(1:10000,2), expt=c(rep("e1",10000), rep("e2",10000)), 
+                          A=rpois(20000, lambda = 100), B=rpois(20000, lambda = 100),
+                          C=rpois(20000, lambda = 100), D=rpois(20000, lambda = 100),
+                          E=rpois(20000, lambda = 100), F=rpois(20000, lambda = 100),
+                          NotSorted=rpois(20000, lambda = 100), 
+                          position = rep(c(rep(NA, 1000), (1:9000)*10 + 5E7),2), 
+                          chr=rep(c(rep(NA, 1000), rep("chr1", 9000)),2), 
+                          negControl = rep(c(rep(TRUE,1000),rep(FALSE,9000)),2), 
+                          stringsAsFactors = FALSE)
+#make one region an "enhancer" and "repressor" by skewing the reads 
+enhancers = data.frame(name = c("enh","repr"), start = c(40000, 70000) + 5E7, 
+  end = c(40500, 70500) + 5E7, chr="chr1")
+enhancerData = findOverlappingElements(fakeReadData[!is.na(fakeReadData$position),], enhancers, 
+  guides.pos = "position",elements.start = "start", elements.end = "end")
+readSkew=1.2 # we will scale up/down the reads in ABC and DEF by this amount
+enhancerData[enhancerData$name=="enh", c("D","E","F")] = 
+  floor(readSkew* enhancerData[enhancerData$name=="enh", c("D","E","F")]);
+enhancerData[enhancerData$name=="repr", c("D","E","F")] = 
+  floor(enhancerData[enhancerData$name=="repr", c("D","E","F")]/readSkew);
+enhancerData[enhancerData$name=="repr", c("A","B","C")] = 
+  floor(readSkew* enhancerData[enhancerData$name=="repr", c("A","B","C")]);
+enhancerData[enhancerData$name=="enh", c("A","B","C")] = 
+  floor(enhancerData[enhancerData$name=="enh", c("A","B","C")]/readSkew);
+#replace the original data for these elements
+fakeReadData = rbind(fakeReadData[!(fakeReadData$id \%in\% enhancerData$id), ],
+  enhancerData[names(fakeReadData)])
+#make experiments and sorting strategy
+expts = unique(fakeReadData["expt"]);
+curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+                                    binStats = curSortBins, unsortedBin = "NotSorted",
+                                    negativeControl="negControl")
+if(require("ggplot2")){
+  p=ggplot(guideHits, aes(x=position, y=Z))+geom_point() ; print(p)
+}
+tilingElementStats = getTilingElementwiseStats(experiments = expts, normNBSummaries = guideHits, 
+  tails = "both", chr = "chr", location="position", negativeControl = "negControl")
+if(require("ggplot2")){
+  p=ggplot(tilingElementStats, aes(x=start, xend=end, y=significanceZ, yend=significanceZ, 
+    colour=FDR<0.01))+geom_segment() ; print(p)
+}
 }

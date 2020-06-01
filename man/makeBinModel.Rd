@@ -18,6 +18,14 @@ returns a data.frame with additional columns including the bin starts and ends i
 Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. In order to create empty bins, use curBinBounds$fraction=0.00000000001 (or some other really small number), which effectively makes the bins so small as to not exist.
 }
 \examples{
-binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data
-p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
+#generally, the bin bounds are retrieved from the FACS data
+binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) 
+if(require("ggplot2")){
+  p = ggplot() + 
+    geom_vline(xintercept= sort(unique(c(binBounds$binStartZ, binBounds$binEndZ))),colour="gray")+
+    theme_classic() + xlab("Target expression") + 
+    geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), 
+      size=5, inherit.aes = FALSE); 
+  print(p)
+}
 }

@@ -36,5 +36,9 @@ Returns a new data.frame containing the intersection of elements and guides
 Finds guides that overlap the elements of a BED-like data.frame (e.g. open chromatin regions) and returns a new data.frame containing those overlaps
 }
 \examples{
-annotatedGuides = findOverlappingElements(myGuides, myElements)
+set1 = data.frame(gid=1:10, chr=c(rep("chr1",5), rep("chr5",5)),
+  pos= c(1:5,1:5)*10, stringsAsFactors = FALSE)
+set2 = data.frame(eid=1:4, chr=c("chr1","chr1","chr4","chr5"), st=c(5,25,1,45),
+    en=c(15,50,50,55), stringsAsFactors = FALSE)
+findOverlappingElements(set1, set2)
 }

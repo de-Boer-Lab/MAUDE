@@ -11,7 +11,7 @@ findGuideHits(
   meanFunction = mean,
   sortBins = c("A", "B", "C", "D", "E", "F"),
   unsortedBin = "NS",
-  nonTargeting = "NT",
+  negativeControl = "NT",
   limits = c(-4, 4)
 )
 }
@@ -28,7 +28,7 @@ findGuideHits(
 
 \item{unsortedBin}{the name in countTable of the unsorted bin.  Defaults to "NS"}
 
-\item{nonTargeting}{the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
+\item{negativeControl}{the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
 
 \item{limits}{the limits to the mu optimization. Defaults to c(-4,4)}
 }
@@ -39,5 +39,14 @@ a data.frame containing the guide-level statistics, including the Z score 'Z', l
 Given a table of counts per guide/bin and a bin model for an experiment, calculate the optimal mean expression for each guide
 }
 \examples{
-guideLevelStats = findGuideHits(binReadMat, binBounds)
+curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+fakeReadData = data.frame(id=1:1000, A=rpois(1000, lambda = 100), B=rpois(1000, lambda = 100),
+                          C=rpois(1000, lambda = 100), D=rpois(1000, lambda = 100),
+                          E=rpois(1000, lambda = 100), F=rpois(1000, lambda = 100),
+                          NotSorted=rpois(1000, lambda = 100), negControl = rnorm(1000)>0)
+guideHits = findGuideHits(fakeReadData, curSortBins, unsortedBin = "NotSorted", 
+  negativeControl="negControl")
+if(require("ggplot2")){
+  p=ggplot(guideHits, aes(x=Z, colour=negControl))+geom_density(); print(p)
+}
 }
