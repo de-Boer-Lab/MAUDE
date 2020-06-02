@@ -1,5 +1,4 @@
 
-#library(codetools)
 
 
 
@@ -16,15 +15,23 @@
 #' @return Returns a new data.frame containing the intersection of elements and guides
 #' @export
 #' @examples
-#' annotatedGuides = findOverlappingElements(myGuides, myElements)
-#` findOverlappingElements(data.frame(gid=1:10, chr=c(rep("chr1",5), rep("chr5",5)), pos= c(1:5,1:5)*10, stringsAsFactors = F), 
-#`    data.frame(eid=1:4, chr=c("chr1","chr1","chr4","chr5"), st=c(5,25,1,45),en=c(15,50,50,55), stringsAsFactors = F))
+#' set1 = data.frame(gid=1:10, chr=c(rep("chr1",5), rep("chr5",5)),
+#'   pos= c(1:5,1:5)*10, stringsAsFactors = FALSE)
+#' set2 = data.frame(eid=1:4, chr=c("chr1","chr1","chr4","chr5"), st=c(5,25,1,45),
+#'     en=c(15,50,50,55), stringsAsFactors = FALSE)
+#' findOverlappingElements(set1, set2)
 findOverlappingElements = function(guides,elements,guides.pos="pos", guides.chr="chr",elements.start="st",elements.end="en", elements.chr="chr"){
   if (! all(c(guides.pos, guides.chr) %in% names(guides))){
     stop(sprintf("Cannot find all of %s and %s in guides data.frame!  Did you forget to set guides.pos or guides.chr?", guides.pos, guides.chr))
   }
   if (! all(c(elements.start, elements.end, elements.chr) %in% names(elements))){
     stop(sprintf("Cannot find all of %s, %s, and %s in elements data.frame!  Did you forget to set elements.start or elements.end?", elements.start, elements.end, elements.chr))
+  }
+  if(any(is.na(c(elements[[elements.start]], elements[[elements.end]], elements[[elements.chr]])))){
+    stop(sprintf("Elements data.frame contains NAs in either %s, %s, or %s.",elements.start,elements.end,elements.chr))
+  }
+  if(any(is.na(c(guides[[guides.pos]], guides[[guides.chr]])))){
+    stop(sprintf("Guides data.frame contains NAs in either %s, or %s.",guides.pos, guides.chr))
   }
   intersection = data.frame()
   for (xi in 1:nrow(elements)){
@@ -47,11 +54,11 @@ findOverlappingElements = function(guides,elements,guides.pos="pos", guides.chr=
 #' @export
 #' @examples
 #' combineZStouffer(rnorm(10))
-combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
+combineZStouffer = function(x){sum(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))}
 
 #' Calculate the log likelihood of observed read counts
 #'
-#' Uses a normal distribution (N(mu,sigma)) to estimate how many reads are expected per bin under nullModel, and calculates the log likelihood under a negative binomial model.
+#' Uses a normal distribution (N(mu,sigma)) to estimate how many reads are expected per bin under nullModel, and calculates the log likelihood under a negative binomial model. This function is usually not used directly.
 #' @param x a vector of guide counts per bin
 #' @param mu the mean for the normal expression distribution
 #' @param k the vector of total counts per bin
@@ -62,6 +69,15 @@ combineZStouffer = function(x){sum(x, na.rm=T)/sqrt(sum(!is.na(x)))}
 #' @export
 #' @examples
 #' #usually not used directly
+#' #make a bin sorting model with 6 10% bins
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' readsForGuideX =c(10,20,30,100,200,100); #the reads for this guide
+#' getNBGaussianLikelihood(x=readsForGuideX, mu=1, k=rep(1E6,6), sigma=1, nullModel=curSortBins, 
+#'   libFract = 50/1E6)
+#' getNBGaussianLikelihood(x=readsForGuideX, mu=-1, k=rep(1E6,6), sigma=1, nullModel=curSortBins, 
+#'   libFract = 50/1E6)
+#' #mu=1 is far more likely (closer to 0) than mu=-1 for this distribution of reads
+#' @import stats
 getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   #mu = mean of distribution
   #k = vector of total counts per bin
@@ -69,18 +85,14 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
   #nullModel = bin bounds for null model
   #calculate the probabilities of being within each bin
   binFractions = pnorm(nullModel$binEndZ-mu) - pnorm(nullModel$binStartZ-mu)
-  #message(sprintf("binFractions = %s",paste(as.character((binFractions)),collapse=", ")))
   binFractions = binFractions*libFract/(nullModel$binEndQ - nullModel$binStartQ)
-  #message(sprintf("scaled binFractions = %s",paste(as.character((binFractions)),collapse=", ")))
   likelihood =0;
-  #message(sprintf("observed fractions = %s",paste(as.character(((x/k))),collapse=", ")))
   for (i in 1:nrow(nullModel)){
     #dnbinom(x = number of reads for this guide, size = number of reads total, prob= probability of getting a read at each drawing)
-    suppressWarnings({likelihood = likelihood  + dnbinom(x=x[i], size=k[i], prob =1- binFractions[i], log=T)})
+    suppressWarnings({likelihood = likelihood  + dnbinom(x=x[i], size=k[i], prob =1- binFractions[i], log=TRUE)})
   }
   return(likelihood)
 }
-#checkUsage(getNBGaussianLikelihood)
 
 #' Create a bin model for a single experiment
 #'
@@ -90,8 +102,17 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 #' @return returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
 #' @export
 #' @examples
-#' binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) #generally, this is retrieved from the FACS data
-#' p = ggplot() + geom_vline(xintercept = sort(unique(c(binBounds$binStartZ,binBounds$binEndZ))),colour="gray") + theme_classic()+ xlab("Target expression") + geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), size=5, inherit.aes = F); print(p)
+#' #generally, the bin bounds are retrieved from the FACS data
+#' binBounds = makeBinModel(data.frame(Bin=c("A","B","C","D","E","F"), fraction=rep(0.1,6))) 
+#' if(require("ggplot2")){
+#'   p = ggplot() + 
+#'     geom_vline(xintercept= sort(unique(c(binBounds$binStartZ, binBounds$binEndZ))),colour="gray")+
+#'     theme_classic() + xlab("Target expression") + 
+#'     geom_segment(data=binBounds, aes(x=binStartZ, xend=binEndZ, colour=Bin, y=0, yend=0), 
+#'       size=5, inherit.aes = FALSE); 
+#'   print(p)
+#' }
+#' @import stats
 makeBinModel = function(curBinBounds,tailP=0.001){
   if (!all(curBinBounds$Bin %in% c("A","B","C","D","E","F"))){
     stop("Bin IDs must be A-F inclusive")
@@ -122,7 +143,6 @@ makeBinModel = function(curBinBounds,tailP=0.001){
   curBinBounds$binEndZ = qnorm(curBinBounds$binEndQ)
   return(curBinBounds)
 }
-#checkUsage(makeBinModel)
 
 #' Calculate guide-level statistics for a single screen
 #'
@@ -133,16 +153,26 @@ makeBinModel = function(curBinBounds,tailP=0.001){
 #' @param meanFunction how to calculate the mean of the non-targeting guides for centering Z-scores.  Defaults to 'mean'
 #' @param sortBins the names in countTable of the sorting bins.  Defaults to c("A","B","C","D","E","F")
 #' @param unsortedBin the name in countTable of the unsorted bin.  Defaults to "NS"
-#' @param nonTargeting the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param negativeControl the name in countTable containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @param limits the limits to the mu optimization. Defaults to c(-4,4)
 #' @return a data.frame containing the guide-level statistics, including the Z score 'Z', log likelihood ratio 'llRatio', and estimated mean expression 'mean'.
 #' @export
 #' @examples
-#' guideLevelStats = findGuideHits(binReadMat, binBounds)
-findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", nonTargeting="NT", limits=c(-4,4)){
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' fakeReadData = data.frame(id=1:1000, A=rpois(1000, lambda = 100), B=rpois(1000, lambda = 100),
+#'                           C=rpois(1000, lambda = 100), D=rpois(1000, lambda = 100),
+#'                           E=rpois(1000, lambda = 100), F=rpois(1000, lambda = 100),
+#'                           NotSorted=rpois(1000, lambda = 100), negControl = rnorm(1000)>0)
+#' guideHits = findGuideHits(fakeReadData, curSortBins, unsortedBin = "NotSorted", 
+#'   negativeControl="negControl")
+#' if(require("ggplot2")){
+#'   p=ggplot(guideHits, aes(x=Z, colour=negControl))+geom_density(); print(p)
+#' }
+#' @import stats
+findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction = mean, sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", negativeControl="NT", limits=c(-4,4)){
   if(nrow(curBinBounds) > nrow(unique(curBinBounds))){ stop("Duplicate rows in curBinBounds table!")}
-  if(!nonTargeting %in% names(countTable)){
-    stop(sprintf("Column '%s' is missing from countTable; did you specify 'nonTargeting='?", nonTargeting))
+  if(!negativeControl %in% names(countTable)){
+    stop(sprintf("Column '%s' is missing from countTable; did you specify 'negativeControl='?", negativeControl))
   }
   if(!unsortedBin %in% names(countTable)){
     stop(sprintf("Column '%s' is missing from countTable; did you specify 'unsortedBin='?", unsortedBin))
@@ -167,10 +197,10 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     countTable[unsortedBin]=countTable[unsortedBin]+pseudocount;
   }
   curNormNBSummaries = countTable
-  countTable$libFraction = countTable[[unsortedBin]]/sum(countTable[[unsortedBin]],na.rm=T)
+  countTable$libFraction = countTable[[unsortedBin]]/sum(countTable[[unsortedBin]],na.rm=TRUE)
   
-  curNormNBSummaries$libFraction = curNormNBSummaries[[unsortedBin]]/sum(curNormNBSummaries[[unsortedBin]],na.rm=T)
-  binCounts = apply(curNormNBSummaries[sortBins],2,function(x){sum(x, na.rm = T)})
+  curNormNBSummaries$libFraction = curNormNBSummaries[[unsortedBin]]/sum(curNormNBSummaries[[unsortedBin]],na.rm=TRUE)
+  binCounts = apply(curNormNBSummaries[sortBins],2,function(x){sum(x, na.rm = TRUE)})
   
   #for each guide, find the optimal mu given the count data and bin percentages
   for (i in 1:nrow(curNormNBSummaries)){
@@ -194,11 +224,11 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     curNormNBSummaries$mean[i]=  curOptim$par
     curNormNBSummaries$ll[i]  = -curOptim$value
   }
-  if (sum(curNormNBSummaries[[nonTargeting]]) == 0){
-    warning(sprintf("Cannot calculate logliklihood ratio or Z score without non-targeting guides and %s indicates there are no such guides",nonTargeting))
+  if (sum(curNormNBSummaries[[negativeControl]]) == 0){
+    warning(sprintf("Cannot calculate logliklihood ratio or Z score without non-targeting guides and %s indicates there are no such guides",negativeControl))
   }
   #recalculate LL ratio and calculate a Z score for the mean WRT the observed mean expression of the non-targeting (NT) guides
-  muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[nonTargeting]]]) # mean of the non-targeting guides mean expressions
+  muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[negativeControl]]]) # mean of the non-targeting guides mean expressions
   for (i in 1:nrow(curNormNBSummaries)){
     curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
     if (!is.finite(curNormNBSummaries$llRatio[i])){
@@ -212,43 +242,56 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   return(curNormNBSummaries)
 } 
 
-#checkUsage(findGuideHits)
 
 
 #' Calculate Z-score scaling factors using non-targeting guides
 #'
-#' Calculates scaling factors to calibrate  element-wise Z-scores by repeatedly calculating a set of "null" Z-scores by repeatedly sampling the given numbers of non-targeting guides per element.
+#' Calculates scaling factors to calibrate  element-wise Z-scores by repeatedly calculating a set of "null" Z-scores by repeatedly sampling the given numbers of non-targeting guides per element. This function is not normally used directly.
 #' @param ntData data.frame containing the data for the non-targeting guides
 #' @param uGuidesPerElement a unique vector of guide counts per element
-#' @param mergeBy usually contains a data.frame containing the headers that demarcate the screen ID
+#' @param mergeBy a character vector containing the header(s) that demarcate the screen/experiment/replicate ID(s)
 #' @param ntSampleFold how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)
 #' @return a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy
 #' @export
 #' @examples
-#' #not generally used directly
+#' fakeReadData = data.frame(id=rep(1:1000,2), expt=c(rep("e1",1000), rep("e2",1000)), 
+#'                           A=rpois(2000, lambda = 100), B=rpois(2000, lambda = 100),
+#'                           C=rpois(2000, lambda = 100), D=rpois(2000, lambda = 100),
+#'                           E=rpois(2000, lambda = 100), F=rpois(2000, lambda = 100),
+#'                           NotSorted=rpois(2000, lambda = 100), 
+#'                           negControl = rep(rnorm(1000)>0,2), stringsAsFactors = FALSE)
+#' expts = unique(fakeReadData["expt"]);
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+#' curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+#' guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+#'                                     binStats = curSortBins, unsortedBin = "NotSorted",
+#'                                     negativeControl="negControl")
+#' guideZScales = getZScalesWithNTGuides(guideHits[guideHits$negControl,], uGuidesPerElement=1:10, 
+#'   mergeBy=names(expts))
+#' if(require("ggplot2")){
+#'   p=ggplot(guideZScales, aes(x=numGuides, y=Zscale, colour=expt))+geom_point()+geom_line();
+#'   print(p)
+#' }
+#' @importFrom reshape cast
 getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10){
   message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
-  ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=T),]
+  ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=TRUE),]
   zScales = data.frame();
   for(i in uGuidesPerElement){
     ntData = ntData[order(runif(nrow(ntData))),]
     for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
     ntData$groupID = floor((0:(nrow(ntData)-1))/i)
     #message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
-    #message(str(ntData))
     ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
-    #message(str(ntStats))
     ntStats = ntStats[ntStats$numGuides==i,]
-    #message(str(ntStats))
-    ntStats = as.data.frame(cast(ntStats, as.formula(sprintf("%s ~ .", paste(mergeBy, collapse = " + "))), value="stoufferZ",fun.aggregate = function(x){sd(x,na.rm=T)}))
+    ntStats = as.data.frame(cast(ntStats, as.formula(sprintf("%s ~ .", paste(mergeBy, collapse = " + "))), value="stoufferZ",fun.aggregate = function(x){sd(x,na.rm=TRUE)}))
     names(ntStats)[ncol(ntStats)]="Zscale"
     ntStats$numGuides=i;
-    #message(str(ntStats))
     zScales = rbind(zScales, ntStats)
   }
   return(zScales)
 }
-#checkUsage(getZScalesWithNTGuides)
 
 #' Find active elements by sliding window
 #'
@@ -260,19 +303,61 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
 #' @param chr the name of the column in normNBSummaries containing the chromosome name (defaults to "chr")
 #' @param window the window width in base pairs (defaults to 500)
 #' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
-#' @param nonTargeting the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all windows tested for activity
 #' @export
 #' @examples
-#' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
-#' elementLevelStatsTiling = getTilingElementwiseStats(myScreens, allGuideLevelStats, tails = "upper")
-getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, nonTargeting="NT", ...){
+#' fakeReadData = data.frame(id=rep(1:10000,2), expt=c(rep("e1",10000), rep("e2",10000)), 
+#'                           A=rpois(20000, lambda = 100), B=rpois(20000, lambda = 100),
+#'                           C=rpois(20000, lambda = 100), D=rpois(20000, lambda = 100),
+#'                           E=rpois(20000, lambda = 100), F=rpois(20000, lambda = 100),
+#'                           NotSorted=rpois(20000, lambda = 100), 
+#'                           position = rep(c(rep(NA, 1000), (1:9000)*10 + 5E7),2), 
+#'                           chr=rep(c(rep(NA, 1000), rep("chr1", 9000)),2), 
+#'                           negControl = rep(c(rep(TRUE,1000),rep(FALSE,9000)),2), 
+#'                           stringsAsFactors = FALSE)
+#' #make one region an "enhancer" and "repressor" by skewing the reads 
+#' enhancers = data.frame(name = c("enh","repr"), start = c(40000, 70000) + 5E7, 
+#'   end = c(40500, 70500) + 5E7, chr="chr1")
+#' enhancerData = findOverlappingElements(fakeReadData[!is.na(fakeReadData$position),], enhancers, 
+#'   guides.pos = "position",elements.start = "start", elements.end = "end")
+#' readSkew=1.2 # we will scale up/down the reads in ABC and DEF by this amount
+#' enhancerData[enhancerData$name=="enh", c("D","E","F")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="enh", c("D","E","F")]);
+#' enhancerData[enhancerData$name=="repr", c("D","E","F")] = 
+#'   floor(enhancerData[enhancerData$name=="repr", c("D","E","F")]/readSkew);
+#' enhancerData[enhancerData$name=="repr", c("A","B","C")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="repr", c("A","B","C")]);
+#' enhancerData[enhancerData$name=="enh", c("A","B","C")] = 
+#'   floor(enhancerData[enhancerData$name=="enh", c("A","B","C")]/readSkew);
+#' #replace the original data for these elements
+#' fakeReadData = rbind(fakeReadData[!(fakeReadData$id %in% enhancerData$id), ],
+#'   enhancerData[names(fakeReadData)])
+#' #make experiments and sorting strategy
+#' expts = unique(fakeReadData["expt"]);
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+#' curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+#' guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+#'                                     binStats = curSortBins, unsortedBin = "NotSorted",
+#'                                     negativeControl="negControl")
+#' if(require("ggplot2")){
+#'   p=ggplot(guideHits, aes(x=position, y=Z))+geom_point() ; print(p)
+#' }
+#' tilingElementStats = getTilingElementwiseStats(experiments = expts, normNBSummaries = guideHits, 
+#'   tails = "both", chr = "chr", location="position", negativeControl = "negControl")
+#' if(require("ggplot2")){
+#'   p=ggplot(tilingElementStats, aes(x=start, xend=end, y=significanceZ, yend=significanceZ, 
+#'     colour=FDR<0.01))+geom_segment() ; print(p)
+#' }
+#' @import stats
+getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both", location="pos", chr="chr", window=500, minGuides=5, negativeControl="NT", ...){
   if(!location %in% names(normNBSummaries)){
     stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'location='?", location))
   }
-  if(!nonTargeting %in% names(normNBSummaries)){
-    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'nonTargeting='?", nonTargeting))
+  if(!negativeControl %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'negativeControl='?", negativeControl))
   }
   if(!"Z" %in% names(normNBSummaries)){
     stop(sprintf("Column 'Z' is missing from normNBSummaries"))
@@ -282,23 +367,22 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   }
   experiments = unique(experiments);
   mergeBy = names(experiments);
-  ntData = normNBSummaries[normNBSummaries[[nonTargeting]],]
-  normNBSummaries = normNBSummaries[!normNBSummaries[[nonTargeting]],]
+  ntData = normNBSummaries[normNBSummaries[[negativeControl]],]
+  if(nrow(ntData)<10){
+    stop(sprintf("You have too few negative controls (only %i). This can indicate a mistake in the input labels for %s", nrow(ntData), negativeControl))
+  }
+  normNBSummaries = normNBSummaries[!normNBSummaries[[negativeControl]],]
+  if(nrow(normNBSummaries)<1){
+    stop(sprintf("You have no non-negative controls. Usually this is a mistake in the input labels for %s", negativeControl))
+  }
   elementwiseStats = data.frame();
   for (i in 1:nrow(experiments)){
-    #message(i)
     for (curChr in unique(normNBSummaries[[chr]])){
-      #message(curChr)
-      #message(paste(names(experiments[i,, drop=FALSE]), collapse=", "))
-      #message(paste(names(normNBSummaries[i,]), collapse=", "))
       curData = merge(experiments[i,, drop=FALSE],normNBSummaries[normNBSummaries[[chr]]==curChr,], by=mergeBy)
       curData = curData[order(curData[location]),]
       lagging=1
       leading=1
       while (leading <=nrow(curData)){
-        #message(names(curData))
-        #message(window)
-        #message(head(curData[[location]]))
         while (curData[[location]][lagging] + window < curData[[location]][leading]){
           lagging = lagging +1;
         }
@@ -343,34 +427,151 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   if (tails=="upper"){
     elementwiseStats$p.value = pnorm(-elementwiseStats$significanceZ)
   }
-  elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
+  
+  elementwiseStats$FDR = calcFDRByExperiment(experiments, elementwiseStats, tails)
   elementwiseStats$Zscale=NULL
   return(elementwiseStats);
 }
-#checkUsage(getTilingElementwiseStats)
+
+#' FDR correction per experiment
+#'
+#' Perform Benjamini-Hochberg FDR correction of p-values within each experiment. The returned values correspond to Q values. This is run automatically within getTilingElementwiseStats and getElementwiseStats, and doesn't generally need to be used directly.
+#' @param experiments a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries
+#' @param x data.frame of element-level statistics, including columns for every column in 'experiments' and a column named 'p.value'
+#' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
+#' @return a numerical vector containing B-H Q values corrected separately for every experiment.
+#' @export
+#' @examples
+#' fakeReadData = data.frame(id=rep(1:10000,2), expt=c(rep("e1",10000), rep("e2",10000)), 
+#'                           A=rpois(20000, lambda = 100), B=rpois(20000, lambda = 100),
+#'                           C=rpois(20000, lambda = 100), D=rpois(20000, lambda = 100),
+#'                           E=rpois(20000, lambda = 100), F=rpois(20000, lambda = 100),
+#'                           NotSorted=rpois(20000, lambda = 100), 
+#'                           position = rep(c(rep(NA, 1000), (1:9000)*10 + 5E7),2), 
+#'                           chr=rep(c(rep(NA, 1000), rep("chr1", 9000)),2), 
+#'                           negControl = rep(c(rep(TRUE,1000),rep(FALSE,9000)),2), 
+#'                           stringsAsFactors = FALSE)
+#' #make one region an "enhancer" and "repressor" by skewing the reads 
+#' enhancers = data.frame(name = c("enh","repr"), start = c(40000, 70000) + 5E7, 
+#'   end = c(40500, 70500) + 5E7, chr="chr1")
+#' enhancerData = findOverlappingElements(fakeReadData[!is.na(fakeReadData$position),], enhancers, 
+#'   guides.pos = "position",elements.start = "start", elements.end = "end")
+#' readSkew=1.2 # we will scale up/down the reads in ABC and DEF by this amount
+#' enhancerData[enhancerData$name=="enh", c("D","E","F")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="enh", c("D","E","F")]);
+#' enhancerData[enhancerData$name=="repr", c("D","E","F")] = 
+#'   floor(enhancerData[enhancerData$name=="repr", c("D","E","F")]/readSkew);
+#' enhancerData[enhancerData$name=="repr", c("A","B","C")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="repr", c("A","B","C")]);
+#' enhancerData[enhancerData$name=="enh", c("A","B","C")] = 
+#'   floor(enhancerData[enhancerData$name=="enh", c("A","B","C")]/readSkew);
+#' #replace the original data for these elements
+#' fakeReadData = rbind(fakeReadData[!(fakeReadData$id %in% enhancerData$id), ],
+#'   enhancerData[names(fakeReadData)])
+#' #make experiments and sorting strategy
+#' expts = unique(fakeReadData["expt"]);
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+#' curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+#' guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+#'                                     binStats = curSortBins, unsortedBin = "NotSorted",
+#'                                     negativeControl="negControl")
+#' tilingElementStats = getTilingElementwiseStats(experiments = expts, normNBSummaries = guideHits, 
+#'   tails = "both", chr = "chr", location="position", negativeControl = "negControl")
+#' tilingElementStats$Q = calcFDRByExperiment(expts, tilingElementStats,"both") 
+#' if(require("ggplot2")){
+#'   p=ggplot(tilingElementStats, aes(x=FDR, y=Q)) +geom_point()+geom_abline(intercept=0, slope=1)+
+#'     scale_y_log10()+scale_x_log10(); print(p)
+#' }
+#' @import stats
+calcFDRByExperiment = function(experiments, x, tails){
+  allFDRs = rep(NA, nrow(x));
+  for (i in 1:nrow(experiments)){
+    curRows = rep(TRUE, nrow(x));
+    for(n in names(experiments)){
+      curRows = curRows & x[n]==experiments[i,n]
+    }
+    allFDRs[curRows] = p.adjust(x$p.value[curRows], method = "BH", n = sum(curRows) * (1 + ((tails=="both")) ))
+  }
+  return(allFDRs);
+}
+
 
 #' Find active elements by annotation
 #'
-#' Tests guides for activity by considering a sliding window across the tested region and including all guides within the window for the test.
+#' Tests guides for activity by considering a set of provided regulatory elements within the region and considering all guides within each region for the test.
 #' @param experiments a data.frame containing the headers that demarcate the screen ID, which are all also present in normNBSummaries
 #' @param normNBSummaries data.frame of guide-level statistics as generated by findGuideHits()
 #' @param elementIDs the names of one or more columns within guideLevelStats that contain the element annotations.
 #' @param tails whether to test for increased expression ("upper"), decreased ("lower"), or both ("both"); (defaults to "both")
-#' @param nonTargeting the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all elements
 #' @export
 #' @examples
-#' allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
-#' elementLevelStats = getElementwiseStats(unique(allGuideLevelStats["screen"]),allGuideLevelStats, elementIDs="element",tails="upper")
-getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="both", nonTargeting="NT",...){
-  if(!nonTargeting %in% names(normNBSummaries)){
-    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'nonTargeting='?", nonTargeting))
+#' fakeReadData = data.frame(id=rep(1:10000,2), expt=c(rep("e1",10000), rep("e2",10000)), 
+#'                           A=rpois(20000, lambda = 100), B=rpois(20000, lambda = 100),
+#'                           C=rpois(20000, lambda = 100), D=rpois(20000, lambda = 100),
+#'                           E=rpois(20000, lambda = 100), F=rpois(20000, lambda = 100),
+#'                           NotSorted=rpois(20000, lambda = 100), 
+#'                           position = rep(c(rep(NA, 1000), (1:9000)*10 + 5E7),2), 
+#'                           chr=rep(c(rep(NA, 1000), rep("chr1", 9000)),2), 
+#'                           negControl = rep(c(rep(TRUE,1000),rep(FALSE,9000)),2), 
+#'                           stringsAsFactors = FALSE)
+#' #make one region an "enhancer" and "repressor" by skewing the reads 
+#' enhancers = data.frame(name = c("enh","repr"), start = c(40000, 70000) + 5E7, 
+#'   end = c(40500, 70500) + 5E7, chr="chr1")
+#' enhancerData = findOverlappingElements(fakeReadData[!is.na(fakeReadData$position),], 
+#'   enhancers, guides.pos = "position",elements.start = "start", elements.end = "end")
+#' readSkew=1.2 # we will scale up/down the reads in ABC and DEF by this amount
+#' enhancerData[enhancerData$name=="enh", c("D","E","F")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="enh", c("D","E","F")]);
+#' enhancerData[enhancerData$name=="repr", c("D","E","F")] = 
+#'   floor(enhancerData[enhancerData$name=="repr", c("D","E","F")]/readSkew);
+#' enhancerData[enhancerData$name=="repr", c("A","B","C")] = 
+#'   floor(readSkew* enhancerData[enhancerData$name=="repr", c("A","B","C")]);
+#' enhancerData[enhancerData$name=="enh", c("A","B","C")] = 
+#'   floor(enhancerData[enhancerData$name=="enh", c("A","B","C")]/readSkew);
+#' #replace the original data for these elements
+#' fakeReadData = rbind(fakeReadData[!(fakeReadData$id %in% enhancerData$id), ],
+#'   enhancerData[names(fakeReadData)])
+#' #make experiments and sorting strategy
+#' expts = unique(fakeReadData["expt"]);
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+#' curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+#' guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+#'                                     binStats = curSortBins, unsortedBin = "NotSorted",
+#'                                     negativeControl="negControl")
+#' 
+#' potentialEnhancers = rbind(enhancers, data.frame(name = sprintf("EC%i", 1:16), 
+#'   start = (5:20)*6000 + 5E7, end = (5:20)*6000 + 5E7+500, chr="chr1"))
+#' #annotate guides with elements, but first get all non-targeting guides
+#' guideHitsAnnotated = guideHits[is.na(guideHits$position),];
+#' guideHitsAnnotated$name=NA; guideHitsAnnotated$start=NA; 
+#' guideHitsAnnotated$end=NA; guideHitsAnnotated$chr=NA;
+#' guideHitsAnnotated = rbind(guideHitsAnnotated, 
+#'   findOverlappingElements(guideHits[!is.na(guideHits$position),], potentialEnhancers, 
+#'     guides.pos = "position",elements.start = "start", elements.end = "end") )
+#' allElementHits = getElementwiseStats(experiments = expts, normNBSummaries = guideHitsAnnotated, 
+#'   elementIDs = "name", tails = "both", negativeControl = "negControl")
+#' allElementHits = merge(allElementHits, potentialEnhancers, by="name")
+#' if(require("ggplot2")){
+#'   p=ggplot(allElementHits, aes(x=start, xend=end, y=significanceZ, yend=significanceZ, 
+#'     colour=FDR<0.01, label=name)) + geom_segment()+
+#'     geom_text(data= allElementHits[allElementHits$FDR<0.01,], colour="black") + 
+#'     facet_grid(expt ~ .); print(p)
+#' }
+#' @importFrom reshape cast
+#' @import stats
+getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="both", negativeControl="NT",...){
+  if(!negativeControl %in% names(normNBSummaries)){
+    stop(sprintf("Column '%s' is missing from normNBSummaries; did you specify 'negativeControl='?", negativeControl))
   }
   experiments = unique(experiments);
   mergeBy = names(experiments);
-  ntData = normNBSummaries[normNBSummaries[[nonTargeting]],]
-  normNBSummaries = normNBSummaries[!normNBSummaries[[nonTargeting]],]
+  ntData = normNBSummaries[normNBSummaries[[negativeControl]],]
+  normNBSummaries = normNBSummaries[!normNBSummaries[[negativeControl]],]
   elementwiseStats = cast(normNBSummaries[!apply(is.na(normNBSummaries[elementIDs]), 1, any),], as.formula(sprintf("%s ~ .", paste(c(elementIDs, mergeBy), collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x), meanZ=mean(x)))})
   elementwiseStats = elementwiseStats[order(elementwiseStats$stoufferZ),]
   #head(elementwiseStats)
@@ -389,11 +590,10 @@ getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="
   if (tails=="upper"){
     elementwiseStats$p.value = pnorm(-elementwiseStats$significanceZ)
   }
-  elementwiseStats$FDR = p.adjust(elementwiseStats$p.value, method = "BH", n = nrow(elementwiseStats) + ((tails=="both") * nrow(elementwiseStats)))
+  elementwiseStats$FDR = calcFDRByExperiment(experiments, elementwiseStats, tails)
   elementwiseStats$Zscale=NULL
   return(elementwiseStats);
 }
-#checkUsage(getElementwiseStats)
 
 #' Calculate guide-level stats for multiple experiments
 #'
@@ -405,7 +605,19 @@ getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="
 #' @return guide-level stats for all experiments
 #' @export
 #' @examples
-#'  allGuideLevelStats = findGuideHitsAllScreens(myScreens, allDataCounts, allBinStats)
+#'  fakeReadData = data.frame(id=rep(1:1000,2), expt=c(rep("e1",1000), rep("e2",1000)), 
+#'                           A=rpois(2000, lambda = 100), B=rpois(2000, lambda = 100),
+#'                           C=rpois(2000, lambda = 100), D=rpois(2000, lambda = 100),
+#'                           E=rpois(2000, lambda = 100), F=rpois(2000, lambda = 100),
+#'                           NotSorted=rpois(2000, lambda = 100), 
+#'                           negControl = rep(rnorm(1000)>0,2), stringsAsFactors = FALSE)
+#' expts = unique(fakeReadData["expt"]);
+#' curSortBins = makeBinModel(data.frame(Bin = c("A","B","C","D","E","F"), fraction = rep(0.1,6)))
+#' curSortBins = rbind(curSortBins, curSortBins) # duplicate and use same for both expts
+#' curSortBins$expt = c(rep(expts$expt[1],6),rep(expts$expt[2],6))
+#' guideHits = findGuideHitsAllScreens(experiments = expts, countDataFrame=fakeReadData,
+#'                                     binStats = curSortBins, unsortedBin = "NotSorted",
+#'                                     negativeControl="negControl")
 findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   if (!"Bin" %in% names(binStats)){
     if (!"bin" %in% names(binStats)){
@@ -444,6 +656,5 @@ findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   allSummaries[[idCol]]=NULL;
   return(allSummaries);
 }
-#checkUsage(findGuideHitsAllScreens)
 
 
