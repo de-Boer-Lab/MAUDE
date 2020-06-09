@@ -35,7 +35,7 @@ binReadMat = data.frame(cast(cd69CountData[!is.na(cd69CountData$PAM_3primeEnd_co
 
 
 ## ----input set of DHS peaks---------------------------------------------------
-dhsPeakBED = read.table('https://raw.githubusercontent.com/Carldeboer/MAUDE/master/Tutorial/Encode_Jurkat_DHS_both.merged.bed', 
+dhsPeakBED = read.table(system.file("extdata", "Encode_Jurkat_DHS_both.merged.bed", package = "MAUDE", mustWork = TRUE), 
   stringsAsFactors=FALSE, row.names=NULL, sep="\t", header=FALSE)
 names(dhsPeakBED) = c("chrom","start","end");
 #add a column to include peak names
@@ -44,7 +44,7 @@ dhsPeakBED$name = paste(dhsPeakBED$chrom, paste(dhsPeakBED$start, dhsPeakBED$end
 ## ----read in bin fractions----------------------------------------------------
 #read in the bin fractions derived from Simeonov et al Extended Data Fig 1a and the "digitize" R package
 #Ideally, you derive this from the FACS sort data. 
-binStats = read.table('https://raw.githubusercontent.com/Carldeboer/MAUDE/master/Tutorial/CD69_bin_percentiles.txt', 
+binStats = read.table(system.file("extdata", "CD69_bin_percentiles.txt", package = "MAUDE", mustWork = TRUE), 
   stringsAsFactors=FALSE, row.names=NULL, sep="\t", header=TRUE)
 binStats$fraction = binStats$binEndQ - binStats$binStartQ; #the fraction of cells captured is the difference in bin start and end percentiles
 

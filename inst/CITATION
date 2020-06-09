@@ -1,0 +1,21 @@
+citHeader("To cite MAUDE in publications use:")
+
+citEntry(entry = "Article",
+  title        = "MAUDE: inferring expression changes in sorting-based CRISPR screens",
+  author       = personList(as.person("Carl G. de Boer"),
+                   as.person("John P. Ray"),
+                   as.person("Nir Hacohen"),
+                   as.person("Aviv Regev")),
+  journal      = "Genome Biology",
+  year         = "2020",
+  volume       = "21",
+  number       = "1",
+  pages        = "134",
+  url          = "https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02046-8",
+
+  textVersion  =
+  paste("de Boer CG, Ray JP, Hacohen N, Regev A.",
+		"MAUDE: inferring expression changes in sorting-based CRISPR screens.",  
+ 		"Genome Biol. 2020;21(1):134. Published 2020 Jun 3.",
+		"doi:10.1186/s13059-020-02046-8")
+)
