@@ -37,8 +37,8 @@ Right now we have three main requirements:
 
 ## Tutorials
 We provide two tutorials on how to run a MAUDE analysis in R here:
-1. [Re-analysis of CD69 screen data](Tutorial/Tutorial.md)
-2. [Analysis of a simulated screen](Simulation.md)
+1. [Re-analysis of CD69 screen data](https://carldeboer.github.io/MAUDE/doc/CD69_tutorial.html)
+2. [Analysis of a simulated screen](https://carldeboer.github.io/MAUDE/doc/simulated_data_tutorial.html)
 
 For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://carldeboer.github.io/MAUDE/Evaluation/method_evaluation.html)
 
