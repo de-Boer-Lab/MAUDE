@@ -100,4 +100,5 @@ Should you encounter a problem using MAUDE:
 
 # Citation
 Please cite:
-> Carl G de Boer*, John Ray*, Nir Hacohen, and Aviv Regev, MAUDE, bioRxiv. https://www.biorxiv.org/content/10.1101/819649v1
+
+Carl G de Boer*, John P Ray*, Nir Hacohen, Aviv Regev. [_MAUDE: Inferring Expression Changes in Sorting-Based CRISPR Screens_.](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02046-8) 2020 Jun 3;21(1):134. doi: 10.1186/s13059-020-02046-8. PMID: [32493396](https://pubmed.ncbi.nlm.nih.gov/32493396/).
