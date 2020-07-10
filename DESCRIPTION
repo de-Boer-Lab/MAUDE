@@ -1,6 +1,6 @@
 Package: MAUDE
 Title: Mean Alterations Using Discrete Expression
-Version: 0.99.3
+Version: 0.99.4
 Authors@R: person("Carl", "de Boer", email = "carl.deboer@ubc.ca", role = c("aut", "cre"))
 Description: This package is useful for inferring the difference in the mean expression of some entity as quantified by discrete measurements obtained by binning across expression space. One example of where this is useful is with pooled CRISPR screens with a FACS (cell sorting into discrete bins) readout. For example, you introduce a guide library into your CRISPRi-competent cells, sort them by expression of a reporter gene targeted by your guides, and want to know which guides altered expression of the reporter gene.
 Depends: R (>= 4.0), reshape, stats
