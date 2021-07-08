@@ -24,7 +24,7 @@ Load `devtools` and install from the GitHub page:
 
 ```
 library(devtools)
-install_github("Carldeboer/MAUDE")
+install_github("de-Boer-Lab/MAUDE")
 ```
 # Requirements
 Right now we have three main requirements: 
@@ -37,10 +37,10 @@ Right now we have three main requirements:
 
 ## Tutorials
 We provide two tutorials on how to run a MAUDE analysis in R here:
-1. [Re-analysis of CD69 screen data](https://carldeboer.github.io/MAUDE/doc/CD69_tutorial.html)
-2. [Analysis of a simulated screen](https://carldeboer.github.io/MAUDE/doc/simulated_data_tutorial.html)
+1. [Re-analysis of CD69 screen data](https://de-boer-lab.github.io/MAUDE/doc/CD69_tutorial.html)
+2. [Analysis of a simulated screen](https://de-boer-lab.github.io/MAUDE/doc/simulated_data_tutorial.html)
 
-For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://carldeboer.github.io/MAUDE/Evaluation/method_evaluation.html)
+For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://de-boer-lab.github.io/MAUDE/Evaluation/method_evaluation.html)
 
 ## Quantifying guide DNA abundance
 After sequencing, you get fastqs, one per sorting bin and experiment.  The first step for a MAUDE analysis is to quantify the number of guides residing in each bin.  Here, we provide some guidance as to how to do this.
