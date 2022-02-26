@@ -96,7 +96,7 @@ getNBGaussianLikelihood = function(x, mu, k, sigma=1, nullModel, libFract){
 
 #' Create a bin model for a single experiment
 #'
-#' Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. In order to create empty bins, use curBinBounds$fraction=0.00000000001 (or some other really small number), which effectively makes the bins so small as to not exist.
+#' Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. You can easily remove or rename bins after they have been created with this function. An example is provided in the BACH2 Vignette.
 #' @param curBinBounds  a data.frame containing two columns: Bin (must be {A,B,C,D,E,F}), and fraction (the fractions of the total captured by each bin)
 #' @param tailP the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)
 #' @return returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.

@@ -15,7 +15,7 @@ makeBinModel(curBinBounds, tailP = 0.001)
 returns a data.frame with additional columns including the bin starts and ends in Z-score space, and in quantile space.
 }
 \description{
-Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. In order to create empty bins, use curBinBounds$fraction=0.00000000001 (or some other really small number), which effectively makes the bins so small as to not exist.
+Provided with the fractions captured by each bin, creates a bin model for use with MAUDE analysis, assuming 3 contiguous bins on the tails of the distribution. You can easily remove or rename bins after they have been created with this function. An example is provided in the BACH2 Vignette.
 }
 \examples{
 #generally, the bin bounds are retrieved from the FACS data
