@@ -9,5 +9,5 @@ VignetteBuilder: knitr
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.0.2
+RoxygenNote: 7.1.1
 biocViews: FunctionalPrediction, DifferentialExpression, GeneRegulation, GeneTarget, GenomeAnnotation, PeakDetection, FunctionalGenomics, Genetics, Transcriptomics, SystemsBiology, CRISPR, FlowCytometry, DNASeq, PooledScreens, Annotation, ExperimentalDesign, Normalization, QualityControl, GeneExpression, Transcription, SNP, GeneticVariability

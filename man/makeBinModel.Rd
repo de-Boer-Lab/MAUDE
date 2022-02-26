@@ -7,7 +7,7 @@
 makeBinModel(curBinBounds, tailP = 0.001)
 }
 \arguments{
-\item{curBinBounds}{a data.frame containing three columns: Bin (must be {A,B,C,D,E,F}), and fraction (the fractions of the total captured by each bin)}
+\item{curBinBounds}{a data.frame containing two columns: Bin (must be {A,B,C,D,E,F}), and fraction (the fractions of the total captured by each bin)}
 
 \item{tailP}{the fraction of the tails of the distribution not captured in any bin (defaults to 0.001)}
 }
