@@ -1,6 +1,6 @@
 # MAUDE: Mean Alterations Using Discrete Expression
 
-MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin. The documentation and examples are written with this usage in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. See 'Usage' below for more information.
+MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin.  Most of the documentation and examples are written with a CRISPRi-type sorting screen in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. For example, MAUDE can also be used for [CRISPR base editor screens](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html) where the readout is also expression. See 'Usage' below for more information.
 
 
 <img src="images/logo2.png" alt="Maude Flanders" width="400"/>
@@ -39,6 +39,7 @@ Right now we have three main requirements:
 We provide two tutorials on how to run a MAUDE analysis in R here:
 1. [Re-analysis of CD69 screen data](https://de-boer-lab.github.io/MAUDE/doc/CD69_tutorial.html)
 2. [Analysis of a simulated screen](https://de-boer-lab.github.io/MAUDE/doc/simulated_data_tutorial.html)
+3. [Analysis of a CRISPR base editor non-coding mutation screen](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html)
 
 For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://de-boer-lab.github.io/MAUDE/Evaluation/method_evaluation.html)
 
