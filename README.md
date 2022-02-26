@@ -1,6 +1,6 @@
 # MAUDE: Mean Alterations Using Discrete Expression
 
-MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin. The documentation and examples are written with this usage in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. See 'Usage' below for more information.
+MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin.  Most of the documentation and examples are written with a CRISPRi-type sorting screen in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. For example, MAUDE can also be used for [CRISPR base editor screens](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html) where the readout is also expression. See 'Usage' below for more information.
 
 
 <img src="images/logo2.png" alt="Maude Flanders" width="400"/>
@@ -24,11 +24,11 @@ Load `devtools` and install from the GitHub page:
 
 ```
 library(devtools)
-install_github("Carldeboer/MAUDE")
+install_github("de-Boer-Lab/MAUDE")
 ```
 # Requirements
 Right now we have three main requirements: 
-1. Non-targeting guides are included in the experiment to serve as negative controls and are used for calibrating Z-scores and P-values.
+1. Negative control guides are included in the experiment; these are used for calibrating Z-scores and P-values.
 2. The abundance of the guides must have been measured somehow (usually by sequencing the guide DNA of unsorted cells)
 3. The fractions of cells sorted into each expression bin was quantified
 
@@ -37,10 +37,11 @@ Right now we have three main requirements:
 
 ## Tutorials
 We provide two tutorials on how to run a MAUDE analysis in R here:
-1. [Re-analysis of CD69 screen data](https://carldeboer.github.io/MAUDE/doc/CD69_tutorial.html)
-2. [Analysis of a simulated screen](https://carldeboer.github.io/MAUDE/doc/simulated_data_tutorial.html)
+1. [Re-analysis of CD69 screen data](https://de-boer-lab.github.io/MAUDE/doc/CD69_tutorial.html)
+2. [Analysis of a simulated screen](https://de-boer-lab.github.io/MAUDE/doc/simulated_data_tutorial.html)
+3. [Analysis of a CRISPR base editor non-coding mutation screen](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html)
 
-For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://carldeboer.github.io/MAUDE/Evaluation/method_evaluation.html)
+For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://de-boer-lab.github.io/MAUDE/Evaluation/method_evaluation.html)
 
 ## Quantifying guide DNA abundance
 After sequencing, you get fastqs, one per sorting bin and experiment.  The first step for a MAUDE analysis is to quantify the number of guides residing in each bin.  Here, we provide some guidance as to how to do this.

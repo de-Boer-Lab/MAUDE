@@ -3,3 +3,5 @@
 ^Evaluation$
 ^images$
 ^CommonProblems.md$
+^.*\.Rproj$
+^\.Rproj\.user$
