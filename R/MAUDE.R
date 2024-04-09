@@ -280,7 +280,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
   zScales = data.frame();
   for(i in uGuidesPerElement){
     ntData = ntData[order(runif(nrow(ntData))),]
-    for(sortBy in mergeBy){ ntData = ntData[order(ntData[sortBy]),]} #sort by screen, then by random
+    for(sortBy in mergeBy){ ntData = ntData[order(ntData[[sortBy]]),]} #sort by screen, then by random
     ntData$groupID = floor((0:(nrow(ntData)-1))/i)
     #message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
     ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
@@ -379,7 +379,7 @@ getTilingElementwiseStats = function(experiments, normNBSummaries, tails="both",
   for (i in 1:nrow(experiments)){
     for (curChr in unique(normNBSummaries[[chr]])){
       curData = merge(experiments[i,, drop=FALSE],normNBSummaries[normNBSummaries[[chr]]==curChr,], by=mergeBy)
-      curData = curData[order(curData[location]),]
+      curData = curData[order(curData[[location]]),]
       lagging=1
       leading=1
       while (leading <=nrow(curData)){
