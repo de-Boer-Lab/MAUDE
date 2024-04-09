@@ -36,7 +36,7 @@ devtools::install_github("de-Boer-Lab/MAUDE")
 
 Download the latest MAUDE release (Under "Releases" on the right hand side of this page).
 
-Decompress the directory contained within it (something like "MAUDE-1.0.1").
+Decompress the directory contained within it (something like "MAUDE-1.0.2").
 
 Then in R:
 If you don't already have `devtools`, install it:
@@ -47,7 +47,7 @@ install.packages("devtools")
 Then install in R using:
 
 ```
-devtools::install_local("C:\\Users\\cdeboer\\Downloads\\MAUDE-1.0.1")
+devtools::install_local("C:\\Users\\cdeboer\\Downloads\\MAUDE-1.0.2")
 ```
 
 # Requirements
