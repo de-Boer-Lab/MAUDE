@@ -2,7 +2,9 @@
 
 [![DOI](https://zenodo.org/badge/135627989.svg)](https://zenodo.org/badge/latestdoi/135627989)
 
-MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin.  Most of the documentation and examples are written with a CRISPRi-type sorting screen in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. For example, MAUDE can also be used for [CRISPR base editor screens](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html) where the readout is also expression. See 'Usage' below for more information.
+MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin.  Most of the documentation and examples are written with a CRISPRi-type sorting screen in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. For example, MAUDE can also be used for [CRISPR base editor screens](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html) where the readout is expression of a target gene, and reporter assays with expression readouts (e.g. [Rafi et al](https://www.biorxiv.org/content/10.1101/2023.04.26.538471v2)). 
+
+See 'Usage' below for more information.
 
 
 <img src="images/logo2.png" alt="Maude Flanders" width="400"/>
@@ -17,6 +19,8 @@ MAUDE is an R package for finding differences in means of normally distributed (
 
 # R Installation
 
+## Option 1: Install directly from GitHub
+
 If you don't already have `devtools`, install it:
 ```
 install.packages("devtools")
@@ -25,14 +29,23 @@ install.packages("devtools")
 Load `devtools` and install from the GitHub page:
 
 ```
-library(devtools)
-install_github("de-Boer-Lab/MAUDE")
+devtools::install_github("de-Boer-Lab/MAUDE")
 ```
+
+## Option 2: Install from download
+
+Download the latest MAUDE release (Under "Releases" on the right hand side of this page).
+
+Then in R, run:
+```
+install.packages("C:\\Path\\To\\Download\\MAUDE-1.0.1.zip")
+```
+
 # Requirements
 Right now we have three main requirements: 
-1. Negative control guides are included in the experiment; these are used for calibrating Z-scores and P-values.
-2. The abundance of the guides must have been measured somehow (usually by sequencing the guide DNA of unsorted cells)
-3. The fractions of cells sorted into each expression bin was quantified
+1. Negative control guides are included in the experiment; (these are used for calibrating Z-scores and P-values, and so are not strictly needed if only the expression means are desired).
+2. The abundance of the guides must have been measured somehow (usually by sequencing the guide DNA of unsorted cells; though there are ways to estimate this post-sort if the bins cover the majority of the distribution)
+3. The fractions of cells sorted into each expression bin was quantified (typically the cell counts/fractions read off of the cell sorter)
 
 
 # Usage
