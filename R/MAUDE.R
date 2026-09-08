@@ -345,6 +345,7 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 #' @param uGuidesPerElement a unique vector of guide counts per element
 #' @param mergeBy a character vector containing the header(s) that demarcate the screen/experiment/replicate ID(s)
 #' @param ntSampleFold how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)
+#' @param maxNullGroups a maximum set for how many groups are generated to estimate the null distribution for each uGuidesPerElement entry (default = NULL).
 #' @return a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy
 #' @export
 #' @examples
@@ -368,7 +369,7 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 #'   print(p)
 #' }
 #' @importFrom reshape cast
-getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10){
+getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10, maxNullGroups = NULL){
   ntData <- ntData[, c(mergeBy, "Z"), drop = FALSE] # Drop all columns we don't need to save on memory
   
   if (ntSampleFold==1){
@@ -412,13 +413,33 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
     groupEnds = groupStarts + i - 1L
     completeGroup = rep(TRUE, nCompleteGroups)
     for(m in mergeBy){
+      # Because ntData has been arranged so each mergeBy combination is contiguous,
+      # a group is valid if its first and last row have the same value for every mergeBy column.
       completeGroup = completeGroup & ntData[[m]][groupStarts] == ntData[[m]][groupEnds]
     }
     
-    ntStats = ntData[groupStarts[completeGroup], mergeBy, drop=FALSE]
-    ntStats$groupID = ntData$groupID[groupStarts[completeGroup]]
+    validGroups = which(completeGroup)
+    
+    if(!is.null(maxNullGroups)){
+      validMergeGroups = interaction(
+        ntData[groupStarts[validGroups], mergeBy, drop=FALSE],
+        drop=TRUE,
+        lex.order=TRUE
+      )
+      
+      validGroups = unlist(
+        lapply(
+          split(validGroups, validMergeGroups),
+          function(x) head(x, maxNullGroups)
+        ),
+        use.names=FALSE
+      )
+    }
+    
+    ntStats = ntData[groupStarts[validGroups], mergeBy, drop=FALSE]
+    ntStats$groupID = ntData$groupID[groupStarts[validGroups]]
     ntStats$numGuides = i
-    ntStats$stoufferZ = stoufferZ[completeGroup]
+    ntStats$stoufferZ = stoufferZ[validGroups]
     
     rm(zMat, stoufferZ, groupStarts, groupEnds, completeGroup)
     
@@ -479,7 +500,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
 #' @param chr the name of the column in normNBSummaries containing the chromosome name (defaults to "chr")
 #' @param window the window width in base pairs (defaults to 500)
 #' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
-#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"#' 
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all windows tested for activity
 #' @export
