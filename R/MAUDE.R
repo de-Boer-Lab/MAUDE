@@ -400,6 +400,24 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
     ntData = ntData[randomOrder,,drop=FALSE]
     rm(randomOrder)
     
+    # After the first shuffle, ntData is organized into contiguous
+    # mergeBy blocks. Update the cached indices to those new positions.
+    # This is done to ensure the guides are only shuffled within each mergeBy group,
+    # even after the dataframe has been re-ordered
+    if(iter == 1L){
+      groupSizes <- lengths(rowsByMergeGroup)
+      groupEnds <- cumsum(groupSizes)
+      groupStarts <- groupEnds - groupSizes + 1L
+      
+      rowsByMergeGroup <- Map(
+        seq.int,
+        from = groupStarts,
+        to = groupEnds
+      )
+      
+      rm(groupSizes, groupStarts, groupEnds)
+    }
+    
     ntData$groupID = (seq_len(nrow(ntData)) - 1L) %/% i
     
     # Calculate Stouffer Z for each group using matrix operations
