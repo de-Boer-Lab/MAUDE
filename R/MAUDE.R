@@ -201,9 +201,9 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
   curNormNBSummaries$libFraction = curNormNBSummaries[[unsortedBin]]/sum(curNormNBSummaries[[unsortedBin]],na.rm=TRUE)
   
   # Initialize logging values
-  progressInterval = 10000
-  progressStart = proc.time()[["elapsed"]]
-  totalStart = progressStart
+  progressCheckInterval = 10000L
+  totalStart = Sys.time()
+  lastUpdate = totalStart
   
   # Initialize ouput arrays
   nGuides = nrow(curNormNBSummaries)
@@ -278,18 +278,32 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     guideMeans[i] = curOptim$par
     guideLLs[i] = -curOptim$value
     
-    if (i %% progressInterval == 0 || i == nrow(curNormNBSummaries)){
-      progressNow = proc.time()[["elapsed"]]
-      guidesInBlock = ifelse(i %% progressInterval == 0, progressInterval, i %% progressInterval)
-      message(sprintf(
-        "Processed %s/%s guides | last %s guides: %.2f seconds | total: %.2f seconds",
-        format(i, big.mark=","),
-        format(nrow(curNormNBSummaries), big.mark=","),
-        format(guidesInBlock, big.mark=","),
-        progressNow-progressStart,
-        progressNow-totalStart
-      ))
-      progressStart = progressNow
+    if (i %% progressCheckInterval == 0L || i == nGuides){
+      progressNow = Sys.time()
+      progressIteration = i %/% progressCheckInterval
+      printUpdate = progressIteration <= 3L || as.numeric(difftime(progressNow, lastUpdate, units="mins")) >= 30 || i == nGuides
+      
+      if(printUpdate){
+        elapsedSeconds = as.numeric(difftime(progressNow, totalStart, units="secs"))
+        meanSecondsPer10k = elapsedSeconds / i * 10000
+        remainingSeconds = elapsedSeconds / i * (nGuides - i)
+        estimatedEnd = progressNow + remainingSeconds
+        
+        message(sprintf(
+          "Processed %s/%s guides (%.1f%%) | elapsed %.2f h | mean %.2f sec/10k guides | remaining %.2f h | ETA %s",
+          format(i, big.mark=",", scientific=FALSE, trim=TRUE),
+          format(nGuides, big.mark=",", scientific=FALSE, trim=TRUE),
+          100 * i / nGuides,
+          elapsedSeconds / 3600,
+          meanSecondsPer10k,
+          remainingSeconds / 3600,
+          format(estimatedEnd, "%Y-%m-%d %H:%M:%S")
+        ))
+        lastUpdate = progressNow
+      }
+      if(i == 3L * progressCheckInterval){
+        message("Progress updates will now be reported every 30 minutes.")
+      }
     }
   }
   
@@ -468,7 +482,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
     
     # Progress update for first 3 iterations, then every 30 minutes
     iterEnd = Sys.time()
-    printUpdate = iter <= 3 || as.numeric(difftime(iterEnd, lastUpdate, units="mins")) >= 30
+    printUpdate = iter <= 3 || as.numeric(difftime(iterEnd, lastUpdate, units="mins")) >= 30 || iter == length(uGuidesPerElement)
     
     if(printUpdate){
       iterSeconds = as.numeric(difftime(iterEnd, iterStart, units="secs"))
@@ -478,19 +492,12 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
       estimatedEnd = iterEnd + remainingSeconds
       
       message(sprintf(
-        "  TOTAL:          %7.1f sec (%.2f min)",
-        iterSeconds,
-        iterSeconds / 60
-      ))
-      
-      message(sprintf(
-        "[%s] Finished %i/%i: %i guides/element | elapsed %.2f h | mean %.2f min/iteration | remaining %.1f h | ETA %s",
-        format(iterEnd, "%Y-%m-%d %H:%M:%S"),
+        "Finished %i/%i: %i guides/element | elapsed %.2f h | mean %.2f sec/iteration | remaining %.1f h | ETA %s",
         iter,
         totalIterations,
         i,
         elapsedSeconds / 3600,
-        meanSeconds / 60,
+        meanSeconds,
         remainingSeconds / 3600,
         format(estimatedEnd, "%Y-%m-%d %H:%M:%S")
       ))
@@ -503,7 +510,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
       lastUpdate = iterEnd
     }
   }
-  
+  message("Finished building background.")
   return(zScales)
 }
 
