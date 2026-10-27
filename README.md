@@ -1,5 +1,7 @@
 # MAUDE: Mean Alterations Using Discrete Expression
 
+WARNING: This is a modified version of the [original MAUDE](https://github.com/de-Boer-Lab/MAUDE). This version has been optimized for large datasets with millions of guides per experiment. 
+
 [![DOI](https://zenodo.org/badge/135627989.svg)](https://zenodo.org/badge/latestdoi/135627989)
 
 MAUDE is an R package for finding differences in means of normally distributed (or nearly so) data, via measuring abundances in discrete bins. For example, a pooled CRISPRi screen with expression readout by FACS sorting into discrete bins and sequencing the abundances of the guides in each bin.  Most of the documentation and examples are written with a CRISPRi-type sorting screen in mind, but there is no reason why it can't be used for any experiment where normally distributed expression values are read out via abundances in discrete expression bins. For example, MAUDE can also be used for [CRISPR base editor screens](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html) where the readout is expression of a target gene, and reporter assays with expression readouts (e.g. [Rafi et al](https://www.biorxiv.org/content/10.1101/2023.04.26.538471v2)). 

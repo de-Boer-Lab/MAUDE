@@ -197,51 +197,159 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
     countTable[unsortedBin]=countTable[unsortedBin]+pseudocount;
   }
   curNormNBSummaries = countTable
-  countTable$libFraction = countTable[[unsortedBin]]/sum(countTable[[unsortedBin]],na.rm=TRUE)
   
   curNormNBSummaries$libFraction = curNormNBSummaries[[unsortedBin]]/sum(curNormNBSummaries[[unsortedBin]],na.rm=TRUE)
-  binCounts = apply(curNormNBSummaries[sortBins],2,function(x){sum(x, na.rm = TRUE)})
+  
+  # Initialize logging values
+  progressCheckInterval = 10000L
+  totalStart = Sys.time()
+  lastUpdate = totalStart
+  
+  # Initialize ouput arrays
+  nGuides = nrow(curNormNBSummaries)
+  guideMeans = numeric(nGuides)
+  guideLLs = numeric(nGuides)
+  
+  # Initialize numeric matrix
+  guideCountMatrix = as.matrix(curNormNBSummaries[, sortBins, drop=FALSE])
+  storage.mode(guideCountMatrix) = "double"
+  libFractions = curNormNBSummaries$libFraction
+  binCounts = colSums(guideCountMatrix, na.rm=TRUE)
   
   #for each guide, find the optimal mu given the count data and bin percentages
-  for (i in 1:nrow(curNormNBSummaries)){
+  message(paste("Performing Guide optimization for", nGuides, "guides"))
+  for (i in seq_len(nGuides)){
     curOptim=list()
+    guideCounts = guideCountMatrix[i, ]
+    guideLibFraction = libFractions[i]
+    
     #interval: The probability of observing a guide outside of this interval in one of the non-terminal bins is very unlikely, and so estimating a true mean for these is too difficult anyway. Besides, we get some local optima at the extremes for sparsely sampled data.
     tryCatch(
-      {curOptim = optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = limits[1], upper = limits[2])},
+      {
+        curOptim = optim(
+          0,
+          fn = function(mu) {
+            -getNBGaussianLikelihood(
+              x = guideCounts,
+              mu = mu,
+              k = binCounts,
+              nullModel = curBinBounds,
+              libFract = guideLibFraction
+            )
+          },
+          method = "L-BFGS-B",
+          lower = limits[1],
+          upper = limits[2]
+        )
+      },
       error =function(e){
         message("Mu optimization returned NaN objective: restricting search space")
         uniformObjectiveEval = data.frame(mu = ((0:1000)/1000 - 1) * (limits[2] - limits[1]) + limits[2], ll = NA)
-        for (k in 1:nrow(uniformObjectiveEval)) {
-          uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = uniformObjectiveEval$mu[k], k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i])
+        for (k in seq_len(nrow(uniformObjectiveEval))) {
+          uniformObjectiveEval$ll[k] = getNBGaussianLikelihood(
+            x = guideCounts,
+            mu = uniformObjectiveEval$mu[k],
+            k = binCounts,
+            nullModel = curBinBounds,
+            libFract = guideLibFraction
+          )
         }
         uniformObjectiveEval = uniformObjectiveEval[!is.infinite(uniformObjectiveEval$ll), ]
         uniformObjectiveEval = uniformObjectiveEval[!is.nan(uniformObjectiveEval$ll), ]
-        stopifnot(nrow(uniformObjectiveEval) >= 1) # no points in the tested space have valid LLs
+        stopifnot(nrow(uniformObjectiveEval) >= 1)
         message(sprintf("New interval = c(%f, %f)", min(uniformObjectiveEval$mu), max(uniformObjectiveEval$mu)))
-        curOptim <<- optim(0, fn = function(mu) { -getNBGaussianLikelihood(x = as.numeric(curNormNBSummaries[sortBins][i, ]), mu = mu, k = binCounts, nullModel = curBinBounds, libFract = curNormNBSummaries$libFraction[i]) }, method = "L-BFGS-B", lower = min(uniformObjectiveEval$mu), upper = max(uniformObjectiveEval$mu))
+        curOptim <<- optim(
+          0,
+          fn = function(mu) {
+            -getNBGaussianLikelihood(
+              x = guideCounts,
+              mu = mu,
+              k = binCounts,
+              nullModel = curBinBounds,
+              libFract = guideLibFraction
+            )
+          },
+          method = "L-BFGS-B",
+          lower = min(uniformObjectiveEval$mu),
+          upper = max(uniformObjectiveEval$mu)
+        )
       }
     )
-    curNormNBSummaries$mean[i]=  curOptim$par
-    curNormNBSummaries$ll[i]  = -curOptim$value
+    guideMeans[i] = curOptim$par
+    guideLLs[i] = -curOptim$value
+    
+    if (i %% progressCheckInterval == 0L || i == nGuides){
+      progressNow = Sys.time()
+      progressIteration = i %/% progressCheckInterval
+      printUpdate = progressIteration <= 3L || as.numeric(difftime(progressNow, lastUpdate, units="mins")) >= 30 || i == nGuides
+      
+      if(printUpdate){
+        elapsedSeconds = as.numeric(difftime(progressNow, totalStart, units="secs"))
+        meanSecondsPer10k = elapsedSeconds / i * 10000
+        remainingSeconds = elapsedSeconds / i * (nGuides - i)
+        estimatedEnd = progressNow + remainingSeconds
+        
+        message(sprintf(
+          "Processed %s/%s guides (%.1f%%) | elapsed %.2f h | mean %.2f sec/10k guides | remaining %.2f h | ETA %s",
+          format(i, big.mark=",", scientific=FALSE, trim=TRUE),
+          format(nGuides, big.mark=",", scientific=FALSE, trim=TRUE),
+          100 * i / nGuides,
+          elapsedSeconds / 3600,
+          meanSecondsPer10k,
+          remainingSeconds / 3600,
+          format(estimatedEnd, "%Y-%m-%d %H:%M:%S")
+        ))
+        lastUpdate = progressNow
+      }
+      if(i == 3L * progressCheckInterval){
+        message("Progress updates will now be reported every 30 minutes.")
+      }
+    }
   }
+  
+  # Agregate arrays
+  curNormNBSummaries$mean = guideMeans
+  curNormNBSummaries$ll = guideLLs
+  
   if (sum(curNormNBSummaries[[negativeControl]]) == 0){
     warning(sprintf("Cannot calculate logliklihood ratio or Z score without non-targeting guides and %s indicates there are no such guides",negativeControl))
   }
   #recalculate LL ratio and calculate a Z score for the mean WRT the observed mean expression of the non-targeting (NT) guides
   muNT = meanFunction(curNormNBSummaries$mean[curNormNBSummaries[[negativeControl]]]) # mean of the non-targeting guides mean expressions
-  for (i in 1:nrow(curNormNBSummaries)){
-    curNormNBSummaries$llRatio[i]=curNormNBSummaries$ll[i] -getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])
-    if (!is.finite(curNormNBSummaries$llRatio[i])){
-      warning(sprintf("Got non-finite llRatio: %f; %f - %f", curNormNBSummaries$llRatio[i],curNormNBSummaries$ll[i] , getNBGaussianLikelihood(x=as.numeric(curNormNBSummaries[sortBins][i,]), mu=muNT, k=binCounts, nullModel=curBinBounds, libFract = curNormNBSummaries$libFraction[i])))
+  
+  # Initialize array
+  guideLLRatios = numeric(nGuides)
+  message("Finished guide optimization; calculating likelihood ratios")
+  for (i in seq_len(nGuides)){
+    nullLL = getNBGaussianLikelihood(
+      x = guideCountMatrix[i,],
+      mu = muNT,
+      k = binCounts,
+      nullModel = curBinBounds,
+      libFract = libFractions[i]
+    )
+    guideLLRatios[i] = guideLLs[i]-nullLL
+    
+    if (!is.finite(guideLLRatios[i])){
+      warning(sprintf(
+        "Got non-finite llRatio: %f; %f - %f",
+        guideLLRatios[i],
+        guideLLs[i],
+        nullLL
+      ))
     }
-    curNormNBSummaries$Z[i]=curNormNBSummaries$mean[i]-muNT
   }
+  
+  curNormNBSummaries$llRatio = guideLLRatios
+  curNormNBSummaries$Z = guideMeans-muNT
+  message("Finished calculating likelihood ratios")
   if (any(curNormNBSummaries$llRatio[!is.na(curNormNBSummaries$llRatio)]<0)){
     warning("Some log-likelihood ratios are negative! (i.e. optimized mu is less likely to mu=0)")
   }
+  
+  
   return(curNormNBSummaries)
 } 
-
 
 
 #' Calculate Z-score scaling factors using non-targeting guides
@@ -251,6 +359,7 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 #' @param uGuidesPerElement a unique vector of guide counts per element
 #' @param mergeBy a character vector containing the header(s) that demarcate the screen/experiment/replicate ID(s)
 #' @param ntSampleFold how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)
+#' @param maxNullGroups a maximum set for how many groups are generated to estimate the null distribution for each uGuidesPerElement entry (default = NULL).
 #' @return a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy
 #' @export
 #' @examples
@@ -274,24 +383,137 @@ findGuideHits = function(countTable, curBinBounds, pseudocount=10, meanFunction 
 #'   print(p)
 #' }
 #' @importFrom reshape cast
-getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10){
-  message(sprintf("Building background with %i non-targeting guides", nrow(ntData)))
-  ntData = ntData[sample(1:nrow(ntData), nrow(ntData)*ntSampleFold, replace=TRUE),]
+getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFold=10, maxNullGroups = NULL){
+  ntData <- ntData[, c(mergeBy, "Z"), drop = FALSE] # Drop all columns we don't need to save on memory
+  
+  if (ntSampleFold==1){
+    message(sprintf("Building background with %i non-targeting guides, without bootstrapping", nrow(ntData)))
+  }else{
+    message(sprintf("Building background with %i non-targeting guides, bootstrapping NT guides %i times", nrow(ntData), ntSampleFold))
+    ntData = ntData[sample.int(nrow(ntData), nrow(ntData)*ntSampleFold, replace=TRUE),]
+  }
+  
+  # Pre-calculate row membership for each unique mergeBy combination
+  mergeGroup = interaction(ntData[mergeBy], drop=TRUE, lex.order=TRUE)
+  rowsByMergeGroup = split(seq_len(nrow(ntData)), mergeGroup)
+  rm(mergeGroup)
+  
   zScales = data.frame();
-  for(i in uGuidesPerElement){
-    ntData = ntData[order(runif(nrow(ntData))),]
-    for(sortBy in mergeBy){ ntData = ntData[order(ntData[[sortBy]]),]} #sort by screen, then by random
-    ntData$groupID = floor((0:(nrow(ntData)-1))/i)
-    #message(sprintf("Unique groups for %i guides per locus: %i", i, length(unique(ntData$groupID))))
-    ntStats = as.data.frame(cast(ntData, as.formula(sprintf("%s + groupID ~ .", paste(mergeBy, collapse = " + "))), value="Z", fun.aggregate = function(x){return(list(numGuides = length(x), stoufferZ=combineZStouffer(x)))}))
-    ntStats = ntStats[ntStats$numGuides==i,]
+  
+  # Progress tracking
+  totalIterations = length(uGuidesPerElement)
+  totalStart = Sys.time()
+  lastUpdate = totalStart
+  
+  for(iter in seq_along(uGuidesPerElement)){
+    i = uGuidesPerElement[iter]
+    iterStart = Sys.time()
+    
+    # Randomly shuffle guides within each mergeBy combination
+    randomOrder = unlist(lapply(rowsByMergeGroup, function(idx){idx[sample.int(length(idx))]}), use.names=FALSE)
+    ntData = ntData[randomOrder,,drop=FALSE]
+    rm(randomOrder)
+    
+    # After the first shuffle, ntData is organized into contiguous
+    # mergeBy blocks. Update the cached indices to those new positions.
+    # This is done to ensure the guides are only shuffled within each mergeBy group,
+    # even after the dataframe has been re-ordered
+    if(iter == 1L){
+      groupSizes <- lengths(rowsByMergeGroup)
+      groupEnds <- cumsum(groupSizes)
+      groupStarts <- groupEnds - groupSizes + 1L
+      
+      rowsByMergeGroup <- Map(
+        seq.int,
+        from = groupStarts,
+        to = groupEnds
+      )
+      
+      rm(groupSizes, groupStarts, groupEnds)
+    }
+    
+    ntData$groupID = (seq_len(nrow(ntData)) - 1L) %/% i
+    
+    # Calculate Stouffer Z for each group using matrix operations
+    nCompleteGroups = nrow(ntData) %/% i
+    nUse = nCompleteGroups * i
+    zMat = matrix(ntData$Z[seq_len(nUse)], nrow=i, ncol=nCompleteGroups)
+    stoufferZ = colSums(zMat, na.rm=TRUE) / sqrt(colSums(!is.na(zMat)))
+    
+    # Remove groups crossing a mergeBy boundary
+    groupStarts = seq.int(1L, nUse, by=i)
+    groupEnds = groupStarts + i - 1L
+    completeGroup = rep(TRUE, nCompleteGroups)
+    for(m in mergeBy){
+      # Because ntData has been arranged so each mergeBy combination is contiguous,
+      # a group is valid if its first and last row have the same value for every mergeBy column.
+      completeGroup = completeGroup & ntData[[m]][groupStarts] == ntData[[m]][groupEnds]
+    }
+    
+    validGroups = which(completeGroup)
+    
+    if(!is.null(maxNullGroups)){
+      validMergeGroups = interaction(
+        ntData[groupStarts[validGroups], mergeBy, drop=FALSE],
+        drop=TRUE,
+        lex.order=TRUE
+      )
+      
+      validGroups = unlist(
+        lapply(
+          split(validGroups, validMergeGroups),
+          function(x) head(x, maxNullGroups)
+        ),
+        use.names=FALSE
+      )
+    }
+    
+    ntStats = ntData[groupStarts[validGroups], mergeBy, drop=FALSE]
+    ntStats$groupID = ntData$groupID[groupStarts[validGroups]]
+    ntStats$numGuides = i
+    ntStats$stoufferZ = stoufferZ[validGroups]
+    
+    rm(zMat, stoufferZ, groupStarts, groupEnds, completeGroup)
+    
     ntStats = as.data.frame(cast(ntStats, as.formula(sprintf("%s ~ .", paste(mergeBy, collapse = " + "))), value="stoufferZ",fun.aggregate = function(x){sd(x,na.rm=TRUE)}))
     names(ntStats)[ncol(ntStats)]="Zscale"
     ntStats$numGuides=i;
     zScales = rbind(zScales, ntStats)
+    
+    # Progress update for first 3 iterations, then every 30 minutes
+    iterEnd = Sys.time()
+    printUpdate = iter <= 3 || as.numeric(difftime(iterEnd, lastUpdate, units="mins")) >= 30 || iter == length(uGuidesPerElement)
+    
+    if(printUpdate){
+      iterSeconds = as.numeric(difftime(iterEnd, iterStart, units="secs"))
+      elapsedSeconds = as.numeric(difftime(iterEnd, totalStart, units="secs"))
+      meanSeconds = elapsedSeconds / iter
+      remainingSeconds = meanSeconds * (totalIterations - iter)
+      estimatedEnd = iterEnd + remainingSeconds
+      
+      message(sprintf(
+        "Finished %i/%i: %i guides/element | elapsed %.2f h | mean %.2f sec/iteration | remaining %.1f h | ETA %s",
+        iter,
+        totalIterations,
+        i,
+        elapsedSeconds / 3600,
+        meanSeconds,
+        remainingSeconds / 3600,
+        format(estimatedEnd, "%Y-%m-%d %H:%M:%S")
+      ))
+      
+      lastUpdate = iterEnd
+    }
+    
+    if(iter == 3){
+      message("Progress updates will now be reported every 30 minutes.")
+      lastUpdate = iterEnd
+    }
   }
+  message("Finished building background.")
   return(zScales)
 }
+
 
 #' Find active elements by sliding window
 #'
@@ -303,7 +525,7 @@ getZScalesWithNTGuides = function(ntData, uGuidesPerElement, mergeBy, ntSampleFo
 #' @param chr the name of the column in normNBSummaries containing the chromosome name (defaults to "chr")
 #' @param window the window width in base pairs (defaults to 500)
 #' @param minGuides the minimum number of guides in a window required for a test (defaults to 5)
-#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"
+#' @param negativeControl the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"#' 
 #' @param ... other parameters for getZScalesWithNTGuides
 #' @return a data.frame containing the statistics for all windows tested for activity
 #' @export
@@ -620,7 +842,7 @@ getElementwiseStats = function(experiments, normNBSummaries, elementIDs, tails="
 #'                                     negativeControl="negControl")
 findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   if (!"Bin" %in% names(binStats)){
-    if (!"bin" %in% names(binStats)){
+    if ("bin" %in% names(binStats)){
       warning("'Bin' column not found in binStats; using 'bin' instead")
       binStats$Bin = binStats$bin;
     }else{
@@ -642,17 +864,17 @@ findGuideHitsAllScreens = function(experiments, countDataFrame, binStats, ...){
   }
   experiments[ncol(experiments)+1]=1:nrow(experiments);
   idCol = names(experiments)[ncol(experiments)];
-  countDataFrame = merge(countDataFrame, experiments, by=mergeBy);
-  binStats = merge(binStats, experiments, by=mergeBy);
+  countDataFrame = merge(countDataFrame, experiments, by=mergeBy, sort=FALSE)
+  binStats = merge(binStats, experiments, by=mergeBy, sort=FALSE)
   
-  allSummaries = data.frame()
-  for(j in 1:nrow(experiments)){
-    normNBSummaries = findGuideHits(
+  allSummaries = vector("list", nrow(experiments))
+  for(j in seq_len(nrow(experiments))){
+    allSummaries[[j]] = findGuideHits(
       countDataFrame[countDataFrame[[idCol]]==experiments[[idCol]][j],], 
       #makeBinModel(binStats[binStats[[idCol]]==experiments[[idCol]][j] , c("Bin","fraction")]), ...)
       binStats[binStats[[idCol]]==experiments[[idCol]][j] , ], ...)
-    allSummaries = rbind(allSummaries,normNBSummaries)
   }
+  allSummaries = do.call(rbind, allSummaries)
   allSummaries[[idCol]]=NULL;
   return(allSummaries);
 }
