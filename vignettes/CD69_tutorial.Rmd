@@ -18,92 +18,117 @@ knitr::opts_chunk$set(echo = TRUE)
 See Simeonov et al. Discovery of stimulation-responsive immune enhancers with CRISPR activation. Nature. 2017 Sep 7;549(7670):111-115. doi: 10.1038/nature23875. Epub 2017 Aug 30. [PMC5675716](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5675716/) for the original publication associated with this dataset.
 
 This tutorial is designed to get you quickly up and running with MAUDE. The only requirements are that you have R and the following R libraries installed:
-`ggplot2, openxlsx, MAUDE, reshape`
+`ggplot2, openxlsx, MAUDE, tidyverse`
 
 ## Load required libraries into R
 ```{r load libraries, results="hide", message = FALSE, warning=FALSE}
 #load required libraries
 library(openxlsx)
-library(reshape)
-library(ggplot2)
 library(MAUDE)
 library(GenomicRanges)
 library(ggbio)
 library(Homo.sapiens)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(readr)
+library(tibble)
+library(tidyr)
+library(stringr)
 ```
 
 ## Load CD69 screen count data from Simeonov Supplementary Table 1
 ```{r input data}
 #read in the CD69 screen data
-CD69Data = read.xlsx('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5675716/bin/NIHMS913084-supplement-supplementary_table_1.xlsx')
+CD69Data <- read.xlsx('NIHMS913084-supplement-supplementary_table_1.xlsx')
 
 #identify non-targeting guides
-CD69Data$isNontargeting = grepl("negative_control", CD69Data$gRNA_systematic_name)
+CD69Data <- CD69Data |>
+  mutate(isNontargeting = grepl("negative_control", gRNA_systematic_name)) |>
+  distinct() # remove duplicated rows
 
-CD69Data = unique(CD69Data) # for some reason there were duplicated rows in this table - remove duplicates
-
-#reshape the count data so we can label the experimental replicates and bins, and remove all the non-count data
-cd69CountData = melt(CD69Data, id.vars = c("PAM_3primeEnd_coord","isNontargeting","gRNA_systematic_name"))
-cd69CountData = cd69CountData[grepl(".count$",cd69CountData$variable),] # keep only read count columns
-cd69CountData$Bin = gsub("CD69(.*)([12]).count","\\1",cd69CountData$variable)
-cd69CountData$expt = gsub("CD69(.*)([12]).count","\\2",cd69CountData$variable)
-cd69CountData$reads= as.numeric(cd69CountData$value); cd69CountData$value=NULL;
-cd69CountData$Bin = gsub("_","",cd69CountData$Bin) # remove extra underscores
-
+#reshape the count data so we can label the experimental replicates and bins,
+#and remove all the non-count data
+cd69CountData <- CD69Data |>
+  dplyr::select(PAM_3primeEnd_coord, isNontargeting, gRNA_systematic_name, matches("\\.count$")) |> 
+  pivot_longer(
+    cols = -c(PAM_3primeEnd_coord, isNontargeting, gRNA_systematic_name),
+    names_to  = "variable",
+    values_to = "reads"
+  ) |>
+  mutate(
+    Bin  = gsub("CD69(.*)([12]).count", "\\1", variable),
+    expt = gsub("CD69(.*)([12]).count", "\\2", variable),
+    reads = as.numeric(reads),
+    Bin  = gsub("_", "", Bin)  # remove extra underscores
+  )
 #reshape into a matrix
-binReadMat = data.frame(cast(cd69CountData[!is.na(cd69CountData$PAM_3primeEnd_coord) | cd69CountData$isNontargeting,], 
-  PAM_3primeEnd_coord+gRNA_systematic_name+isNontargeting+expt ~ Bin, value="reads"))
+binReadMat <- cd69CountData |>
+  filter(!is.na(PAM_3primeEnd_coord) | isNontargeting) |>
+  pivot_wider(
+    id_cols    = c(PAM_3primeEnd_coord, gRNA_systematic_name, isNontargeting, expt),
+    names_from  = Bin,
+    values_from = reads
+  )
 #binReadMat now contains a matrix in the proper format for MAUDE analysis
-
 ```
 
 ##read in the Encode DHS peaks at the locus
 We can use this as a reference point with which to view our results, and to annotate guides with regulatory elements. These are all the DHS peaks at CD69 in Jurkat cells, merged across two replicates.
 
 ```{r input set of DHS peaks}
-dhsPeakBED = read.table(system.file("extdata", "Encode_Jurkat_DHS_both.merged.bed", package = "MAUDE", mustWork = TRUE), 
-  stringsAsFactors=FALSE, row.names=NULL, sep="\t", header=FALSE)
-names(dhsPeakBED) = c("chrom","start","end");
-#add a column to include peak names
-dhsPeakBED$name = paste(dhsPeakBED$chrom, paste(dhsPeakBED$start, dhsPeakBED$end, sep="-"), sep=":")
+dhsPeakBED <- read.table(
+  system.file("extdata", "Encode_Jurkat_DHS_both.merged.bed", package = "MAUDE", mustWork = TRUE),
+  stringsAsFactors = FALSE, row.names = NULL, sep = "\t", header = FALSE
+) |>
+  setNames(c("chrom", "start", "end")) |>
+  mutate(name = paste(chrom, paste(start, end, sep = "-"), sep = ":"))
 ```
 
 ## Read in and inspect bin fractions
 
 ```{r read in bin fractions}
 #read in the bin fractions derived from Simeonov et al Extended Data Fig 1a and the "digitize" R package
-#Ideally, you derive this from the FACS sort data. 
-binStats = read.table(system.file("extdata", "CD69_bin_percentiles.txt", package = "MAUDE", mustWork = TRUE), 
-  stringsAsFactors=FALSE, row.names=NULL, sep="\t", header=TRUE)
-binStats$fraction = binStats$binEndQ - binStats$binStartQ; #the fraction of cells captured is the difference in bin start and end percentiles
+#Ideally, you derive this from the FACS sort data.
+binStats <- read.table(
+  system.file("extdata", "CD69_bin_percentiles.txt", package = "MAUDE", mustWork = TRUE),
+  stringsAsFactors = FALSE, row.names = NULL, sep = "\t", header = TRUE
+) |>
+  mutate(fraction = binEndQ - binStartQ) # the fraction of cells captured is the difference in bin start and end percentiles
 
 #plot the bins as the percentiles of the distribution captured by each bin
-p = ggplot(binStats, aes(colour=Bin)) + ggplot2::geom_segment(aes(x=binStartQ, xend=binEndQ, y=fraction, yend=fraction)) + 
-  xlab("Bin bounds as percentiles") + ylab("Fraction of the distribution captured") +theme_classic() + 
-  scale_y_continuous(expand=c(0,0))+coord_cartesian(ylim=c(0,0.7)); print(p)
+p <- ggplot(binStats, aes(colour = Bin)) +
+  ggplot2::geom_segment(aes(x = binStartQ, xend = binEndQ, y = fraction, yend = fraction)) +
+  xlab("Bin bounds as percentiles") + ylab("Fraction of the distribution captured") +
+  theme_classic() + scale_y_continuous(expand = c(0, 0)) + coord_cartesian(ylim = c(0, 0.7))
+print(p)
 ```
 
 This shows the sizes of the bins in terms of the fractions of the overall distribution covered by each bin. In terms of expression space, we need to convert these to Z scores with the reverse normal CDF function `qnorm`
 ```{r convert bin percentiles to Z scores}
 #convert bin fractions to Z scores
-binStats$binStartZ = qnorm(binStats$binStartQ)
-binStats$binEndZ = qnorm(binStats$binEndQ)
+binStats <- binStats |>
+  mutate(
+    binStartZ = qnorm(binStartQ),
+    binEndZ   = qnorm(binEndQ)
+  )
 ```
 
 Now let's plot the bins as the Z score bounds of a normal distribution, with an actual normal distribution overlaid in gray.
 ```{r plot bins}
-p = ggplot(binStats, aes(colour=Bin))  + 
-  geom_density(data=data.frame(x=rnorm(100000)), aes(x=x), fill="gray", colour=NA)+ 
-  ggplot2::geom_segment(aes(x=binStartZ, xend=binEndZ, y=fraction, yend=fraction)) + 
-  xlab("Bin bounds as expression Z-scores") + 
-  ylab("Fraction of the distribution captured") +theme_classic()+scale_y_continuous(expand=c(0,0))+
-  coord_cartesian(ylim=c(0,0.7)); print(p)
+p <- ggplot(binStats, aes(colour = Bin)) +
+  geom_density(data = data.frame(x = rnorm(100000)), aes(x = x), fill = "gray", colour = NA) +
+  ggplot2::geom_segment(aes(x = binStartZ, xend = binEndZ, y = fraction, yend = fraction)) +
+  xlab("Bin bounds as expression Z-scores") +
+  ylab("Fraction of the distribution captured") + theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) + coord_cartesian(ylim = c(0, 0.7))
+print(p)
 ```
 
 Here, we are forced to use the same distribution for both experimental replicates since we didn't have the underlying data. You should derive this data from the FACS sorting data separately for each replicate (although it doesn't affect things that much if the bins were drawn similarly).
 ```{r duplicate bins for second replicate}
-binStats = rbind(binStats, binStats) #duplicate data
-binStats$expt = c(rep("1",4),rep("2",4)); #name the first duplicate expt "1" and the next expt "2";
+binStats <- bind_rows(binStats, binStats) |> # duplicate data
+  mutate(expt = c(rep("1", 4), rep("2", 4))) # name the first duplicate expt "1" and the next expt "2"
 ```
 
 ## 1) MAUDE: Calculate guide level statistics
@@ -111,27 +136,32 @@ Now we've finally gotten to the part where we're running MAUDE.  To compute guid
 
 This step takes about a minute to run.
 ```{r find guide effects}
-guideLevelStats = findGuideHitsAllScreens(experiments = unique(binReadMat["expt"]), 
-  countDataFrame = binReadMat, binStats = binStats, 
-  sortBins = c("baseline","high","low","medium"), 
-  unsortedBin = "back", negativeControl = "isNontargeting")
+guideLevelStats <- findGuideHitsAllScreens(
+  experiments   = unique(binReadMat["expt"]),
+  countDataFrame = binReadMat,
+  binStats       = binStats,
+  sortBins       = c("baseline", "high", "low", "medium"),
+  unsortedBin    = "back",
+  negativeControl = "isNontargeting"
+)
 ```
 
 Here, we calculated the mean expression of each guide
 ```{r plot guide effects}
 # Plot the guide-level mus
-p = ggplot(guideLevelStats, aes(x=mean, colour=isNontargeting, linetype=expt)) + geom_density()+
-  theme_classic()+scale_y_continuous(expand=c(0,0)) + geom_vline(xintercept = 0)+
-  xlab("Learned mean guide expression"); print(p);
+p <- ggplot(guideLevelStats, aes(x = mean, colour = isNontargeting, linetype = expt)) +
+  geom_density() + theme_classic() + scale_y_continuous(expand = c(0, 0)) +
+  geom_vline(xintercept = 0) + xlab("Learned mean guide expression")
+print(p)
 ```
 
 But notice how the distributions for the non-targeting guides are off-centre.  This is why we also calculate a re-centred Z-score using the non-targeting guides.
 
 ```{r plot guide level Zs}
 # Plot the guide-level Zs
-p = ggplot(guideLevelStats, aes(x=Z, colour=isNontargeting, linetype=expt)) + geom_density()+
-  theme_classic()+scale_y_continuous(expand=c(0,0)) + geom_vline(xintercept = 0)+
-  xlab("Learned guide expression Z score"); 
+p <- ggplot(guideLevelStats, aes(x = Z, colour = isNontargeting, linetype = expt)) +
+  geom_density() + theme_classic() + scale_y_continuous(expand = c(0, 0)) +
+  geom_vline(xintercept = 0) + xlab("Learned guide expression Z score")
 print(p)
 ```
 
@@ -139,23 +169,32 @@ Now the non-targeting guides are centred at 0, as expected since they have no ef
 
 Now that we have guide-level statistics, we can inspect them. We can see there is a high correlation between replicates:
 ```{r plot replicate scatter}
-guideEffectsByRep = cast(guideLevelStats, 
-  gRNA_systematic_name + isNontargeting + PAM_3primeEnd_coord ~ expt, value="Z")
+guideEffectsByRep <- guideLevelStats |>
+  pivot_wider(
+    id_cols    = c(gRNA_systematic_name, isNontargeting, PAM_3primeEnd_coord),
+    names_from  = expt,
+    values_from = Z
+  )
 
-p = ggplot(guideEffectsByRep[!guideEffectsByRep$isNontargeting,], aes(x=`1`, y=`2`)) + 
-  geom_point(size=0.3) + xlab("Replicate 1 Z score") + ylab("Replicate 2 Z score") + 
-  ggtitle(sprintf("r = %f",cor(guideEffectsByRep$`1`[!guideEffectsByRep$isNontargeting],
-    guideEffectsByRep$`2`[!guideEffectsByRep$isNontargeting])))+theme_classic(); 
+p <- guideEffectsByRep |>
+  filter(!isNontargeting) |>
+  ggplot(aes(x = `1`, y = `2`)) +
+  geom_point(size = 0.3) + xlab("Replicate 1 Z score") + ylab("Replicate 2 Z score") +
+  ggtitle(sprintf("r = %f", cor(
+    guideEffectsByRep$`1`[!guideEffectsByRep$isNontargeting],
+    guideEffectsByRep$`2`[!guideEffectsByRep$isNontargeting]
+  ))) + theme_classic()
 print(p)
 ```
 
 They are pretty highly correlated at the effect size.  Now let's map the results across the CD69 locus.
 
 ```{r plot locus}
-dhsPos = min(guideLevelStats$Z)*1.05;
-p=ggplot(guideLevelStats, aes(x=PAM_3primeEnd_coord, y=Z)) +geom_point(size=0.5)+facet_grid(expt ~.)+ 
-  ggplot2::geom_segment(data = dhsPeakBED, aes(x=start, xend=end,y=dhsPos, yend=dhsPos), colour="red") + 
-  theme_classic() + xlab("Genomic position") + ylab("Guide Z score"); 
+dhsPos <- min(guideLevelStats$Z) * 1.05
+p <- ggplot(guideLevelStats, aes(x = PAM_3primeEnd_coord, y = Z)) +
+  geom_point(size = 0.5) + facet_grid(expt ~ .) +
+  ggplot2::geom_segment(data = dhsPeakBED, aes(x = start, xend = end, y = dhsPos, yend = dhsPos), colour = "red") +
+  theme_classic() + xlab("Genomic position") + ylab("Guide Z score")
 print(p)
 ```
 
@@ -167,21 +206,27 @@ There are two ways to get element-level statistics, depending on how the screen 
 Now, we can combine adjacent guides in an unbiased way, using a sliding window across the locus to identify regions with more active guides than expected by chance. Here we use a sliding window of 200 bp, and the default minimum guide number (5). Any 200 bp with fewer than 5 guides will not be tested.
 
 ```{r infer sliding window effects}
-guideLevelStats$chrom = "chr12"; # we need to tell it what chromosome our guides are on - they're all on chr12
-slidingWindowElements = getTilingElementwiseStats(experiments = unique(binReadMat["expt"]), 
-  normNBSummaries = guideLevelStats, tails="both", window = 200, location = "PAM_3primeEnd_coord",
-  chr="chrom",negativeControl = "isNontargeting")
+guideLevelStats$chrom <- "chr12" # we need to tell it what chromosome our guides are on - they're all on chr12
+slidingWindowElements <- getTilingElementwiseStats(
+  experiments = data.frame(expt = unique(binReadMat$expt)),
+  normNBSummaries = guideLevelStats,
+  tails           = "both",
+  window          = 200,
+  location        = "PAM_3primeEnd_coord",
+  chr             = "chrom",
+  negativeControl = "isNontargeting"
+)
 #override the default chromosome field 'chr' with the GRanges compatible 'chrom'
-names(slidingWindowElements)[names(slidingWindowElements)=="chr"]="chrom" 
+slidingWindowElements <- S4Vectors::rename(slidingWindowElements, chr = "chrom")
 ```
 
 Now that we have element-level stats, let's inspect them! First, let's look at the whole locus.
 ```{r tiles locus effects}
-dhsPos = min(slidingWindowElements$meanZ)*1.05;
-p=ggplot(slidingWindowElements, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +
-  ggplot2::geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + 
-  ylab("Element Z score") + geom_hline(yintercept = 0) + 
-  ggplot2::geom_segment(data = dhsPeakBED, aes(x=start, xend=end,y=dhsPos, yend=dhsPos), colour="black");
+dhsPos <- min(slidingWindowElements$meanZ) * 1.05
+p <- ggplot(slidingWindowElements, aes(x = start, xend = end, y = meanZ, yend = meanZ, colour = FDR < 0.01)) +
+  ggplot2::geom_segment(size = 1) + facet_grid(expt ~ .) + theme_classic() +
+  xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0) +
+  ggplot2::geom_segment(data = dhsPeakBED, aes(x = start, xend = end, y = dhsPos, yend = dhsPos), colour = "black")
 print(p)
 ```
 
@@ -189,12 +234,17 @@ In the above, we see that there are some regions significantly upregulated or do
 
 How correlated are the effect size estimates for the two replicates at the element level?
 ```{r tiled replicate scatter}
-slidingWindowElementsByRep = cast(slidingWindowElements, chrom + start + end +numGuides ~ expt, 
-  value="meanZ")
-p = ggplot(slidingWindowElementsByRep, aes(x=`1`, y=`2`)) + geom_point(size=0.5) + 
-  xlab("Replicate 1 element effect Z score") + ylab("Replicate 2 element effect Z score") + 
-  ggtitle(sprintf("r = %f",cor(slidingWindowElementsByRep$`1`,slidingWindowElementsByRep$`2`)))+
-  theme_classic(); 
+slidingWindowElementsByRep <- slidingWindowElements |>
+  pivot_wider(
+    id_cols    = c(chrom, start, end, numGuides),
+    names_from  = expt,
+    values_from = meanZ
+  )
+p <- ggplot(slidingWindowElementsByRep, aes(x = `1`, y = `2`)) +
+  geom_point(size = 0.5) +
+  xlab("Replicate 1 element effect Z score") + ylab("Replicate 2 element effect Z score") +
+  ggtitle(sprintf("r = %f", cor(slidingWindowElementsByRep$`1`, slidingWindowElementsByRep$`2`))) +
+  theme_classic()
 print(p)
 ```
 
@@ -205,39 +255,49 @@ Since we have annotated elements anyway in `dhsPeakBED`, it might help us to ide
 
 ```{r element-level stats}
 #the next command annotates our guides with any DHS peak they lie in.
-annotatedGuides = findOverlappingElements(guides = unique(guideLevelStats[!guideLevelStats$isNontargeting,
-  c("PAM_3primeEnd_coord","gRNA_systematic_name","chrom")]), elements = dhsPeakBED, 
-  elements.start = "start", elements.end = "end", elements.chr = "chrom", 
-  guides.pos = "PAM_3primeEnd_coord", guides.chr = "chrom")
+annotatedGuides <- findOverlappingElements(
+  guides          = guideLevelStats |> filter(!isNontargeting) |> distinct(PAM_3primeEnd_coord, gRNA_systematic_name, chrom),
+  elements        = dhsPeakBED,
+  elements.start  = "start",
+  elements.end    = "end",
+  elements.chr    = "chrom",
+  guides.pos      = "PAM_3primeEnd_coord",
+  guides.chr      = "chrom"
+)
 
 #merge regulatory element annotations back onto guideLevelStats
-guideLevelStats = merge(guideLevelStats, annotatedGuides[c("gRNA_systematic_name", "name")],
-                        by="gRNA_systematic_name", all.x=TRUE)
+guideLevelStats <- guideLevelStats |>
+  left_join(dplyr::select(annotatedGuides, gRNA_systematic_name, name), by = "gRNA_systematic_name")
 
 #this is where we are actually running MAUDE to find element-level stats
-dhsPeakStats = getElementwiseStats(experiments = unique(binReadMat["expt"]), 
-  normNBSummaries = guideLevelStats, negativeControl = "isNontargeting", 
-  elementIDs = "name") # "name" is the peak IDs from the DHS BED file
+dhsPeakStats <- getElementwiseStats(
+  experiments = data.frame(expt = unique(binReadMat$expt)),
+  normNBSummaries = guideLevelStats,
+  negativeControl = "isNontargeting",
+  elementIDs      = "name"
+)
 
 #merge peak info back into dhsPeakStats
-dhsPeakStats = merge(dhsPeakStats, dhsPeakBED, by="name");
+dhsPeakStats <- inner_join(dhsPeakStats, dhsPeakBED, by = "name")
 ```
 
 Now we can again look at the activity of the elements across the locus:
 ```{r element locus effect view}
-p=ggplot(dhsPeakStats, aes(x=start, xend=end, y=meanZ,yend=meanZ, colour=FDR<0.01)) +
-  ggplot2::geom_segment(size=1)+facet_grid(expt ~.) + theme_classic() + xlab("Genomic position") + 
-  ylab("Element Z score") + geom_hline(yintercept = 0); 
+p <- ggplot(dhsPeakStats, aes(x = start, xend = end, y = meanZ, yend = meanZ, colour = FDR < 0.01)) +
+  ggplot2::geom_segment(size = 1) + facet_grid(expt ~ .) + theme_classic() +
+  xlab("Genomic position") + ylab("Element Z score") + geom_hline(yintercept = 0)
 print(p)
 ```
 
 And the correlation between replicates.
 ```{r element replicate scatter}
-dhsPeakStatsByRep = cast(dhsPeakStats, name ~ expt, value="meanZ")
+dhsPeakStatsByRep <- dhsPeakStats |>
+  pivot_wider(id_cols = name, names_from = expt, values_from = meanZ)
 
-p = ggplot(dhsPeakStatsByRep, aes(x=`1`, y=`2`)) + geom_point() + 
-  xlab("Replicate 1 DHS effect Z score") + ylab("Replicate 2 DHS effect Z score") + 
-  ggtitle(sprintf("r = %f",cor(dhsPeakStatsByRep$`1`,dhsPeakStatsByRep$`2`)))+theme_classic(); 
+p <- ggplot(dhsPeakStatsByRep, aes(x = `1`, y = `2`)) +
+  geom_point() +
+  xlab("Replicate 1 DHS effect Z score") + ylab("Replicate 2 DHS effect Z score") +
+  ggtitle(sprintf("r = %f", cor(dhsPeakStatsByRep$`1`, dhsPeakStatsByRep$`2`))) + theme_classic()
 print(p)
 ```
 
@@ -246,12 +306,16 @@ In this case, it didn't look like the regulatory element annotations helped our 
 
 Let's see investigate why this might be by looking at the guide effect sizes for the guides within each DHS element.
 ```{r guide effects per element}
-p=ggplot(guideLevelStats, aes(x=Z, group=name, colour=name == "chr12:9912678-9915275")) + stat_ecdf(alpha=0.3)+ 
-  stat_ecdf(data=guideLevelStats[!is.na(guideLevelStats$name) &
-                                   guideLevelStats$name=="chr12:9912678-9915275",], size=1)+
-  facet_grid(expt ~.) + theme_classic() + xlab("Guide Z score")+scale_y_continuous(expand=c(0,0)) + 
-  scale_x_continuous(expand=c(0,0)) + scale_colour_manual(values=c("black","red")) + 
-  labs(colour = "CD69 promoter?")+ylab("Cumulative fraction"); 
+p <- ggplot(guideLevelStats, aes(x = Z, group = name, colour = name == "chr12:9912678-9915275")) +
+  stat_ecdf(alpha = 0.3) +
+  stat_ecdf(
+    data = filter(guideLevelStats, !is.na(name), name == "chr12:9912678-9915275"),
+    size = 1
+  ) +
+  facet_grid(expt ~ .) + theme_classic() + xlab("Guide Z score") +
+  scale_y_continuous(expand = c(0, 0)) + scale_x_continuous(expand = c(0, 0)) +
+  scale_colour_manual(values = c("black", "red")) +
+  labs(colour = "CD69 promoter?") + ylab("Cumulative fraction")
 print(p)
 ```
 
@@ -259,10 +323,12 @@ Here, the promoter DHS peak is in red and all the other DHS peaks are in black. 
 
 Let's zoom in on the promoter to see what exactly is happening here.
 ```{r promoter view}
-p=ggplot(guideLevelStats[!is.na(guideLevelStats$name) & guideLevelStats$name=="chr12:9912678-9915275",],
-         aes(x=PAM_3primeEnd_coord, y=Z, colour=expt)) +
-  geom_point(size=1)+ geom_line()+theme_classic() + xlab("Genomic position") + ylab("Guide Z score")+
-  geom_vline(xintercept = 9913497, colour="black"); 
+p <- guideLevelStats |>
+  filter(!is.na(name), name == "chr12:9912678-9915275") |>
+  ggplot(aes(x = PAM_3primeEnd_coord, y = Z, colour = expt)) +
+  geom_point(size = 1) + geom_line() + theme_classic() +
+  xlab("Genomic position") + ylab("Guide Z score") +
+  geom_vline(xintercept = 9913497, colour = "black")
 print(p)
 ```
 
@@ -270,16 +336,17 @@ Here, I've marked the transcription start site with a vertical black line. CD69 
 
 Now let's look more closely at the guides and select a few that work especially well.
 ```{r promoter guide zoom}
-p=ggplot(guideEffectsByRep[guideEffectsByRep$PAM_3primeEnd_coord < 9915275 & 
-                             guideEffectsByRep$PAM_3primeEnd_coord > 9912678,], 
-         aes(x=`2`, y=`1`)) + geom_point() + 
-  geom_text(data=guideEffectsByRep[guideEffectsByRep$PAM_3primeEnd_coord < 9915275 & 
-                                     guideEffectsByRep$PAM_3primeEnd_coord > 9912678 & 
-                                     guideEffectsByRep$`1`>2 & guideEffectsByRep$`2`>2,],
-            aes(label=gRNA_systematic_name)) + 
-  theme_classic()+xlab("Replicate 2 guide Z score") + ylab("Replicate 1 guide Z score"); 
-print(p) 
+promoterGuides <- guideEffectsByRep |>
+  filter(PAM_3primeEnd_coord < 9915275, PAM_3primeEnd_coord > 9912678)
 
+p <- ggplot(promoterGuides, aes(x = `2`, y = `1`)) +
+  geom_point() +
+  geom_text(
+    data = filter(promoterGuides, `1` > 2, `2` > 2),
+    aes(label = gRNA_systematic_name)
+  ) +
+  theme_classic() + xlab("Replicate 2 guide Z score") + ylab("Replicate 1 guide Z score")
+print(p)
 ```
 
 We can see that, although there are four guides that have a large effect in one replicate, they don't have as great an effect in the other. Here, I've labeled the IDs of three guides that have a Z score over two in both replicates. If I were going to follow up targeting the CD69 promoter with more guides, these are the ones I would use.
@@ -287,35 +354,47 @@ We can see that, although there are four guides that have a large effect in one 
 `GenomicRanges` is a great package to work with data associated with genomic coordinates.  First, let's restructure our tiling element data.frame so that there is only one row per region and there is one of each data field for each replicate. 
 
 ```{r reshaping window effects}
-slidingWindowElementsByReplicate = cast(melt(slidingWindowElements, 
-  id.vars=c("expt","numGuides","chrom","start","end")), 
-  numGuides+chrom+start+end ~ variable+expt, value="value")
+slidingWindowElementsByReplicate <- slidingWindowElements |>
+  pivot_longer(
+    cols      = -c(expt, numGuides, chrom, start, end),
+    names_to  = "variable",
+    values_to = "value"
+  ) |>
+  pivot_wider(
+    id_cols    = c(numGuides, chrom, start, end),
+    names_from  = c(variable, expt),
+    values_from = value
+  )
 head(slidingWindowElementsByReplicate)
 ```
 
 We can convert our data structures to `GRanges` objects as easily as this:
 
 ```{r cast to GRanges}
-#casting to data.frame is only needed if using cast
-slidingWindowElementsByReplicateGR = GRanges(as.data.frame(slidingWindowElementsByReplicate)) 
+slidingWindowElementsByReplicateGR <- GRanges(slidingWindowElementsByReplicate)
 ```
 
 Now let's label those ranges that were significant in both replicates, and merge overlapping significant ranges to get a set of expanded active regions.
 
 ```{r find doubly significant tiles}
 #require that both replicates are significant at an FDR of 0.1 and that the signs agree
-slidingWindowElementsByReplicateGR$significantUp   = slidingWindowElementsByReplicateGR$FDR_1< 0.01 & 
-  slidingWindowElementsByReplicateGR$FDR_2 < 0.01 & slidingWindowElementsByReplicateGR$meanZ_1 > 0 &
-  slidingWindowElementsByReplicateGR$meanZ_2 > 0; 
-slidingWindowElementsByReplicateGR$significantDown = slidingWindowElementsByReplicateGR$FDR_1< 0.01 &
-  slidingWindowElementsByReplicateGR$FDR_2 < 0.01 & slidingWindowElementsByReplicateGR$meanZ_1 < 0 &
-  slidingWindowElementsByReplicateGR$meanZ_2 < 0;
+slidingWindowElementsByReplicateGR$significantUp <-
+  slidingWindowElementsByReplicateGR$FDR_1 < 0.01 &
+  slidingWindowElementsByReplicateGR$FDR_2 < 0.01 &
+  slidingWindowElementsByReplicateGR$meanZ_1 > 0 &
+  slidingWindowElementsByReplicateGR$meanZ_2 > 0
+
+slidingWindowElementsByReplicateGR$significantDown <-
+  slidingWindowElementsByReplicateGR$FDR_1 < 0.01 &
+  slidingWindowElementsByReplicateGR$FDR_2 < 0.01 &
+  slidingWindowElementsByReplicateGR$meanZ_1 < 0 &
+  slidingWindowElementsByReplicateGR$meanZ_2 < 0
 
 #merge overlapping regions in each set
-overlappingSlidingWindowElementsUp =
-  reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantUp])
-overlappingSlidingWindowElementsDown =
-  reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantDown])
+overlappingSlidingWindowElementsUp <-
+   GenomicRanges::reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantUp])
+overlappingSlidingWindowElementsDown <-
+   GenomicRanges::reduce(slidingWindowElementsByReplicateGR[slidingWindowElementsByReplicateGR$significantDown])
 ```
 
 Now let's plot it all together as a genome browser track!
@@ -328,10 +407,12 @@ wh <- genesymbol[c("CD69", "CLECL1", "KLRF1", "CLEC2D","CLEC2B")]
 wh <- range(wh, ignore.strand = TRUE)
 
 #make the genome tracks
-tracks(autoplot(Homo.sapiens, which = wh, gap.geom="chevron"), 
-  autoplot(overlappingSlidingWindowElementsUp, fill="red"), 
-  autoplot(overlappingSlidingWindowElementsDown, fill="blue"), heights=c(5,2,2)) + theme_classic()
+tracks(
+  autoplot(Homo.sapiens, which = wh, gap.geom = "chevron"),
+  autoplot(overlappingSlidingWindowElementsUp, fill = "red"),
+  autoplot(overlappingSlidingWindowElementsDown, fill = "blue"),
+  heights = c(5, 2, 2)
+) + theme_classic()
 ```
 
 Here, the red are CD69-activating regions, blue are CD69-repressing regions.
-

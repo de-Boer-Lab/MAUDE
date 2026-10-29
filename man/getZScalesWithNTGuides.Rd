@@ -4,7 +4,13 @@
 \alias{getZScalesWithNTGuides}
 \title{Calculate Z-score scaling factors using non-targeting guides}
 \usage{
-getZScalesWithNTGuides(ntData, uGuidesPerElement, mergeBy, ntSampleFold = 10)
+getZScalesWithNTGuides(
+  ntData,
+  uGuidesPerElement,
+  mergeBy,
+  ntSampleFold = 10,
+  maxNullGroups = NULL
+)
 }
 \arguments{
 \item{ntData}{data.frame containing the data for the non-targeting guides}
@@ -14,6 +20,8 @@ getZScalesWithNTGuides(ntData, uGuidesPerElement, mergeBy, ntSampleFold = 10)
 \item{mergeBy}{a character vector containing the header(s) that demarcate the screen/experiment/replicate ID(s)}
 
 \item{ntSampleFold}{how many times to sample each non-targeting guide to make the Z score scale (defaults to 10)}
+
+\item{maxNullGroups}{a maximum set for how many groups are generated to estimate the null distribution for each uGuidesPerElement entry (default = NULL).}
 }
 \value{
 a data.frame containing a Z-score scaling factor, one for every number of guides and unique entry in mergeBy

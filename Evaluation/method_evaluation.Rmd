@@ -18,8 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 This document includes both the code and results for the evaluation metrics used in the MAUDE paper. This should allow fairly easy extension to allow new approaches and datasets. 
 
 ```{r load libraries, results="hide", message = FALSE, warning=FALSE}
-library("ggplot2")
-library(reshape)
+library(tidyverse)
 library(cowplot)
 library(MAUDE)
 library(openxlsx)
@@ -35,481 +34,602 @@ set.seed(35263377)
 ### CD69 screen
 Load the CD69 data and process it.
 ```{r Load and parse CD69 data}
-#a mapping to unify bin names from Simeonov data
-binmapBack = list("baseline" = "baseline", "low"="low", "medium"="medium","high"="high","back_" = "NS",
-                  "baseline_" = "baseline", "low_"="low", "medium_"="medium", "high_"="high", 
-                  "A"="baseline", "B"="low", "E" = "medium", "F"="high")
+# a mapping to unify bin names from Simeonov data
+binmapBack <- c(
+  "baseline" = "baseline", "low" = "low", "medium" = "medium", "high" = "high",
+  "back_"    = "NS",
+  "baseline_" = "baseline", "low_" = "low", "medium_" = "medium", "high_" = "high",
+  "A" = "baseline", "B" = "low", "E" = "medium", "F" = "high"
+)
 
-#this comes from manually reconstructing the CD69 density curve from extended data figure 1a (Simeonov et al)
-binBoundsCD69 = data.frame(Bin = c("A","F","B","E"), 
-                           fraction = c(0.65747100, 0.02792824, 0.25146688, 0.06313389), 
-                           stringsAsFactors = FALSE) 
-fractionalBinBounds = makeBinModel(binBoundsCD69[c("Bin","fraction")])
-fractionalBinBounds = rbind(fractionalBinBounds, fractionalBinBounds)
-fractionalBinBounds$screen = c(rep("1",6),rep("2",6));
-#only keep bins A,B,E,F
-fractionalBinBounds = fractionalBinBounds[fractionalBinBounds$Bin %in% c("A","B","E","F"),]
-fractionalBinBounds$Bin = unlist(binmapBack[fractionalBinBounds$Bin]);
+# this comes from manually reconstructing the CD69 density curve from extended data figure 1a (Simeonov et al)
+binBoundsCD69 <- tibble(
+  Bin      = c("A", "F", "B", "E"),
+  fraction = c(0.65747100, 0.02792824, 0.25146688, 0.06313389)
+)
+fractionalBinBounds <- makeBinModel(binBoundsCD69[c("Bin", "fraction")]) |>
+  bind_rows(makeBinModel(binBoundsCD69[c("Bin", "fraction")])) |>
+  mutate(screen = rep(c("1", "2"), each = 6)) |>
+  filter(Bin %in% c("A", "B", "E", "F")) |>
+  mutate(Bin = binmapBack[Bin])
 
-#load data
-cd69OriginalResults = read.xlsx('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5675716/bin/NIHMS913084-supplement-supplementary_table_1.xlsx')
-cd69OriginalResults$NT = grepl("negative_control", cd69OriginalResults$gRNA_systematic_name)
-cd69OriginalResults$pos = cd69OriginalResults$PAM_3primeEnd_coord;
-cd69OriginalResults = unique(cd69OriginalResults)
-cd69CountData = melt(cd69OriginalResults, id.vars = c("pos","NT","gRNA_systematic_name"))
-cd69CountData = cd69CountData[grepl(".count$",cd69CountData$variable),]
-cd69CountData$theirBin = gsub("CD69(.*)([12]).count","\\1",cd69CountData$variable)
-cd69CountData$screen = gsub("CD69(.*)([12]).count","\\2",cd69CountData$variable)
-cd69CountData$reads= as.numeric(cd69CountData$value); cd69CountData$value=NULL;
-# convert their bin to one that is consistent
-cd69CountData$Bin = unlist(binmapBack[cd69CountData$theirBin]); 
-binReadMat = data.frame(cast(cd69CountData[!is.na(cd69CountData$pos) | cd69CountData$NT,], pos+gRNA_systematic_name+NT+screen ~ Bin, value="reads"))
+# load data
+cd69OriginalResults <- read.xlsx(
+  'NIHMS913084-supplement-supplementary_table_1.xlsx'
+) |>
+  mutate(
+    NT  = grepl("negative_control", gRNA_systematic_name),
+    pos = PAM_3primeEnd_coord
+  ) |>
+  distinct()
+
+cd69CountData <- cd69OriginalResults |>
+  dplyr::select(pos, NT, gRNA_systematic_name, matches("\\.count$")) |> 
+  pivot_longer(
+    cols = -c(pos, NT, gRNA_systematic_name),
+    names_to  = "variable",
+    values_to = "reads"
+  ) |>
+  mutate(
+    Bin  = gsub("CD69(.*)([12]).count", "\\1", variable),
+    screen = gsub("CD69(.*)([12]).count", "\\2", variable),
+    reads = as.numeric(reads),
+    Bin = binmapBack[Bin])
+
+binReadMat <- cd69CountData |>
+  filter(!is.na(pos) | NT) |>
+  pivot_wider(
+    id_cols     = c(pos, gRNA_systematic_name, NT, screen),
+    names_from  = Bin,
+    values_from = reads
+  )
 ```
 
 
 I wanted to confirm that this is how they calculated logFC in Simeonov et al. The plot below should form a straight line on y=x.
 ```{r calc logFC}
-#confirm how to calc log2FC:
-cd69OriginalResults$l2fc.vsbg1 = log2((1+ cd69OriginalResults$CD69high_1.count.norm)/(1+cd69OriginalResults$CD69back_1.count.norm))
-cd69OriginalResults$l2fc.vsbg2 = log2((1+ cd69OriginalResults$CD69high_2.count.norm)/(1+cd69OriginalResults$CD69back_2.count.norm))
-cd69OriginalResults$l2fc.hilo1 = log2((1+ cd69OriginalResults$CD69high_1.count.norm)/(1+cd69OriginalResults$CD69baseline_1.count.norm))
-cd69OriginalResults$l2fc.hilo2 = log2((1+ cd69OriginalResults$CD69high_2.count.norm)/(1+cd69OriginalResults$CD69baseline_2.count.norm))
-#confirm that how we just calculated log2 fc is the same as originally calculated
-p=ggplot(cd69OriginalResults, aes(x=high2.l2fc,y= l2fc.vsbg2)) + geom_point(); print(p)
+# confirm how to calc log2FC:
+cd69OriginalResults <- cd69OriginalResults |>
+  mutate(
+    l2fc.vsbg1 = log2((1 + CD69high_1.count.norm) / (1 + CD69back_1.count.norm)),
+    l2fc.vsbg2 = log2((1 + CD69high_2.count.norm) / (1 + CD69back_2.count.norm)),
+    l2fc.hilo1 = log2((1 + CD69high_1.count.norm) / (1 + CD69baseline_1.count.norm)),
+    l2fc.hilo2 = log2((1 + CD69high_2.count.norm) / (1 + CD69baseline_2.count.norm))
+  )
+
+# confirm that how we just calculated log2 fc is the same as originally calculated
+ggplot(cd69OriginalResults, aes(x = high2.l2fc, y = l2fc.vsbg2)) + geom_point()
 ```
 
 Run the various analysis methods on the CD69 data.
 ```{r run methods, results="hide", message = FALSE, warning=FALSE}
-#edgeR
-x <- unique(cd69OriginalResults[c("gRNA_systematic_name","CD69baseline_1.count","CD69baseline_2.count", 
-                                  "CD69high_1.count", "CD69high2.count")])
-row.names(x) = x$gRNA_systematic_name; x$gRNA_systematic_name=NULL;
-x=as.matrix(x)
-group <- factor(c(1,1,2,2))
-y <- DGEList(counts=x,group=group)
-y <- calcNormFactors(y)
+# edgeR
+x <- cd69OriginalResults |>
+  select(gRNA_systematic_name, CD69baseline_1.count, CD69baseline_2.count,
+         CD69high_1.count, CD69high2.count) |>
+  distinct() |>
+  column_to_rownames("gRNA_systematic_name") |>
+  as.matrix()
+
+group  <- factor(c(1, 1, 2, 2))
+y      <- DGEList(counts = x, group = group)
+y      <- calcNormFactors(y)
 design <- model.matrix(~group)
-y <- estimateDisp(y,design)
-#To perform likelihood ratio tests:
-fit <- glmFit(y,design)
-lrt <- glmLRT(fit,coef=2)
-edgeRGuideLevel = topTags(lrt, n=nrow(x))@.Data[[1]]
-edgeRGuideLevel$gRNA_systematic_name = row.names(edgeRGuideLevel);
-edgeRGuideLevel$metric = edgeRGuideLevel$logFC;
-edgeRGuideLevel$significance = -log(edgeRGuideLevel$PValue);
-edgeRGuideLevel$method="edgeR";
+y      <- estimateDisp(y, design)
+fit    <- glmFit(y, design)
+lrt    <- glmLRT(fit, coef = 2)
 
-#DESeq2
-deseqGroups = data.frame(bin=factor(c(1,1,2,2)));
-row.names(deseqGroups) = c("CD69baseline_1.count","CD69baseline_2.count", 
-                           "CD69high_1.count", "CD69high2.count");
-dds <- DESeqDataSetFromMatrix(countData = x,colData = deseqGroups, design= ~ bin)
+edgeRGuideLevel <- topTags(lrt, n = nrow(x))@.Data[[1]] |>
+  rownames_to_column("gRNA_systematic_name") |>
+  mutate(metric = logFC, significance = -log(PValue), method = "edgeR")
+
+# DESeq2
+deseqGroups <- data.frame(
+  bin = factor(c(1, 1, 2, 2)),
+  row.names = c("CD69baseline_1.count", "CD69baseline_2.count",
+                "CD69high_1.count", "CD69high2.count")
+)
+dds <- DESeqDataSetFromMatrix(countData = x, colData = deseqGroups, design = ~bin)
 dds <- DESeq(dds)
-res <- results(dds, name=resultsNames(dds)[2])
+res <- results(dds, name = resultsNames(dds)[2])
 
-deseqGuideLevel = as.data.frame(res@listData)
-deseqGuideLevel$gRNA_systematic_name =res@rownames;
-deseqGuideLevel$metric = deseqGuideLevel$log2FoldChange;
-deseqGuideLevel$significance = -log(deseqGuideLevel$pvalue);
-deseqGuideLevel$method="DESeq2";
+deseqGuideLevel <- as.data.frame(res@listData) |>
+  mutate(
+    gRNA_systematic_name = res@rownames,
+    metric       = log2FoldChange,
+    significance = -log(pvalue),
+    method       = "DESeq2"
+  )
 
-#MAUDE
-guideLevelStatsCD69 = findGuideHitsAllScreens(unique(binReadMat["screen"]), binReadMat, fractionalBinBounds, sortBins = c("baseline","high","low","medium"), unsortedBin = "NS")
-guideLevelStatsCD69$chr="chr12"
-guideLevelStatsCastCD69 = cast(guideLevelStatsCD69, gRNA_systematic_name + pos+NT ~ screen, value="Z")
-names(guideLevelStatsCastCD69)[ncol(guideLevelStatsCastCD69)-1:0]=c("s1","s2")
-guideLevelStatsCastCD69$significance = apply(guideLevelStatsCastCD69[c("s1","s2")],1, combineZStouffer)
-guideLevelStatsCastCD69$metric=apply(guideLevelStatsCastCD69[c("s1","s2")],1, mean)
-guideLevelStatsCastCD69$method = "MAUDE"
+# MAUDE
+guideLevelStatsCD69 <- findGuideHitsAllScreens(
+  distinct(binReadMat["screen"]), binReadMat, fractionalBinBounds,
+  sortBins = c("baseline", "high", "low", "medium"), unsortedBin = "NS"
+)
+guideLevelStatsCD69$chr <- "chr12"
 
-#Two log fold change methods
-cd69OriginalResultsHiLow = cd69OriginalResults[c("gRNA_systematic_name","l2fc.hilo1","l2fc.hilo2")]
-cd69OriginalResultsVsBG = cd69OriginalResults[c("gRNA_systematic_name","l2fc.vsbg1","l2fc.vsbg2")]
-cd69OriginalResultsHiLow$significance = apply(cd69OriginalResultsHiLow[2:3], 1, FUN = mean)
-cd69OriginalResultsHiLow$metric = apply(cd69OriginalResultsHiLow[2:3], 1, FUN = mean)
-cd69OriginalResultsVsBG$significance = apply(cd69OriginalResultsVsBG[2:3], 1, FUN = mean)
-cd69OriginalResultsVsBG$metric = apply(cd69OriginalResultsVsBG[2:3], 1, FUN = mean)
-cd69OriginalResultsHiLow$method="logHivsLow"
-cd69OriginalResultsVsBG$method="logVsUnsorted"
+guideLevelStatsCastCD69 <- guideLevelStatsCD69 |>
+  pivot_wider(
+    id_cols     = c(gRNA_systematic_name, pos, NT),
+    names_from  = screen,
+    values_from = Z,
+    names_prefix = "s"           # produces s1, s2
+  ) |>
+  mutate(
+    significance = apply(pick(s1, s2), 1, combineZStouffer),
+    metric       = rowMeans(pick(s1, s2)),
+    method       = "MAUDE"
+  )
+
+# Two log fold change methods
+cd69OriginalResultsHiLow <- cd69OriginalResults |>
+  select(gRNA_systematic_name, l2fc.hilo1, l2fc.hilo2) |>
+  mutate(
+    significance = rowMeans(pick(l2fc.hilo1, l2fc.hilo2)),
+    metric       = rowMeans(pick(l2fc.hilo1, l2fc.hilo2)),
+    method       = "logHivsLow"
+  )
+
+cd69OriginalResultsVsBG <- cd69OriginalResults |>
+  select(gRNA_systematic_name, l2fc.vsbg1, l2fc.vsbg2) |>
+  mutate(
+    significance = rowMeans(pick(l2fc.vsbg1, l2fc.vsbg2)),
+    metric       = rowMeans(pick(l2fc.vsbg1, l2fc.vsbg2)),
+    method       = "logVsUnsorted"
+  )
 ```
 
 Compile the results from the various methods.
 ```{r compile results}
-# predictions
-allResults = rbind(cd69OriginalResultsVsBG[c("method","gRNA_systematic_name","significance","metric")],
-                   cd69OriginalResultsHiLow[c("method","gRNA_systematic_name","significance","metric")],
-                   deseqGuideLevel[c("method","gRNA_systematic_name","significance","metric")], 
-                   edgeRGuideLevel[c("method","gRNA_systematic_name","significance","metric")],
-                   guideLevelStatsCastCD69[c("method","gRNA_systematic_name","significance","metric")]) 
+keep_cols <- c("method", "gRNA_systematic_name", "significance", "metric")
 
-
-allResults = merge(allResults, cd69OriginalResults[c("gRNA_systematic_name","NT","pos")],
-                   by="gRNA_systematic_name")
-allResults = allResults[!is.na(allResults$pos) | allResults$NT,]
-allResults$promoter  = allResults$pos <= 9913996 & allResults$pos >= 9912997
-allResults$gID = allResults$gRNA_systematic_name; allResults$gRNA_systematic_name=NULL;
-allResults$locus ="CD69"
-allResults$type ="CRISPRa"
-allResults$celltype ="Jurkat"
+allResults <- bind_rows(
+  select(cd69OriginalResultsVsBG,  all_of(keep_cols)),
+  select(cd69OriginalResultsHiLow, all_of(keep_cols)),
+  select(deseqGuideLevel,          all_of(keep_cols)),
+  select(edgeRGuideLevel,          all_of(keep_cols)),
+  select(guideLevelStatsCastCD69,  all_of(keep_cols))
+) |>
+  left_join(
+    distinct(cd69OriginalResults, gRNA_systematic_name, NT, pos),
+    by = "gRNA_systematic_name"
+  ) |>
+  filter(!is.na(pos) | NT) |>
+  mutate(
+    promoter  = pos <= 9913996 & pos >= 9912997,
+    gID       = gRNA_systematic_name,
+    locus     = "CD69",
+    type      = "CRISPRa",
+    celltype  = "Jurkat"
+  ) |>
+  select(-gRNA_systematic_name)
 ```
 
 ### TNFAIP3
 Load and parse the TNFAIP3 data from Ray et al.
 ```{r input and parse TNFAIP3 data}
+read_gz_table <- function(url_str) {
+  read.table(
+    textConnection(readLines(gzcon(url(url_str)))),
+    sep = "\t", stringsAsFactors = FALSE, header = TRUE
+  )
+}
 
-##read in TNFAIP3 data
-binFractionsA20 = read.table(textConnection(readLines(gzcon(url("https://ftp.ncbi.nlm.nih.gov/geo/series/GSE136nnn/GSE136693/suppl/GSE136693_20190828_CRISPR_FF_bin_fractions.txt.gz")))), 
-                             sep="\t", stringsAsFactors = FALSE, header = TRUE)
-CRISPRaCountsA20 = read.table(textConnection(readLines(gzcon(url("https://ftp.ncbi.nlm.nih.gov/geo/series/GSE136nnn/GSE136693/suppl/GSE136693_20190828_CRISPRa_FF_countMatrix.txt.gz")))), 
-                              sep="\t", stringsAsFactors = FALSE, header = TRUE)
-CRISPRiCountsA20 = read.table(textConnection(readLines(gzcon(url("https://ftp.ncbi.nlm.nih.gov/geo/series/GSE136nnn/GSE136693/suppl/GSE136693_20190828_CRISPRi_FF_countMatrix.txt.gz")))), 
-                              sep="\t", stringsAsFactors = FALSE, header = TRUE)
-crispraGuides = read.table(textConnection(readLines(gzcon(url("https://ftp.ncbi.nlm.nih.gov/geo/series/GSE136nnn/GSE136693/suppl/GSE136693_20180205_selected_CRISPRa_guides_seq.txt.gz")))), 
-                           sep="\t", stringsAsFactors = FALSE, header = TRUE)
-crispraGuides$seq = gsub("(.*)(.{3})","\\1",crispraGuides$seq.w.PAM)
-crispraGuides$pos = round((as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])","\\2",
-                                           crispraGuides$guideID))+
-                             as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])","\\3",
-                                             crispraGuides$guideID)))/2)
+base_url <- "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE136nnn/GSE136693/suppl"
+binFractionsA20  <- read_gz_table(file.path(base_url, "GSE136693_20190828_CRISPR_FF_bin_fractions.txt.gz"))
+CRISPRaCountsA20 <- read_gz_table(file.path(base_url, "GSE136693_20190828_CRISPRa_FF_countMatrix.txt.gz"))
+CRISPRiCountsA20 <- read_gz_table(file.path(base_url, "GSE136693_20190828_CRISPRi_FF_countMatrix.txt.gz"))
+crispraGuides    <- read_gz_table(file.path(base_url, "GSE136693_20180205_selected_CRISPRa_guides_seq.txt.gz"))
 
-CRISPRaCountsA20 = merge(CRISPRaCountsA20, unique(crispraGuides[c("seq","pos")]), by=c("seq"), all.x=TRUE)
+parse_guide_pos <- function(id_vec) {
+  round((as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])", "\\2", id_vec)) +
+           as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])", "\\3", id_vec))) / 2)
+}
 
-CRISPRiCountsA20$pos = round((as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])","\\2",
-                                              CRISPRiCountsA20$gID))+
-                                as.numeric(gsub("([0-9]+):([0-9]+)-([0-9]+):([+-])","\\3",
-                                              CRISPRiCountsA20$gID)))/2)
+crispraGuides <- crispraGuides |>
+  mutate(
+    seq = gsub("(.*)(.{3})", "\\1", seq.w.PAM),
+    pos = parse_guide_pos(guideID)
+  )
 
-binFractionsA20$expt = paste(binFractionsA20$celltype, binFractionsA20$CRISPRType,sep="_")
+CRISPRaCountsA20 <- left_join(
+  CRISPRaCountsA20,
+  crispraGuides |> dplyr::group_by(seq) |> dplyr::summarise(pos = pos[1], .groups = "drop"),
+  by = "seq"
+)
 
-#merge CRISPRi and CRISPRa
-A20CountData = melt(CRISPRaCountsA20, id.vars=c("seq","elementClass","element","NT","gID","pos"))
-A20CountData$CRISPRType="CRISPRa";
-A20CountData2 = melt(CRISPRiCountsA20, id.vars=c("seq","elementClass","element","NT","gID","pos"))
-A20CountData2$CRISPRType="CRISPRi";
-A20CountData = rbind(A20CountData, A20CountData2)
-rm('A20CountData2');
-A20CountData$count = A20CountData$value; A20CountData$value=NULL;
-A20CountData$sample = A20CountData$variable; A20CountData$variable=NULL;
-A20CountData$bin = gsub("(.*)_(.*)_(.*)", "\\3", A20CountData$sample);
-A20CountData$screen = gsub("(.*)_(.*)_(.*)", "\\2", A20CountData$sample);
-A20CountData$celltype = gsub("(.*)_(.*)_(.*)", "\\1", A20CountData$sample);
-A20CountData$expt = paste(A20CountData$celltype, A20CountData$CRISPRType,sep="_")
+CRISPRiCountsA20 <- mutate(CRISPRiCountsA20, pos = parse_guide_pos(gID))
+binFractionsA20  <- mutate(binFractionsA20, expt = paste(celltype, CRISPRType, sep = "_"))
+
+# merge CRISPRi and CRISPRa into long format
+# gID is integer in CRISPRa and character in CRISPRi — coerce both to character first
+id_vars <- c("seq", "elementClass", "element", "NT", "gID", "pos")
+A20CountData <- bind_rows(
+  pivot_longer(mutate(CRISPRaCountsA20, gID = as.character(gID)),
+               -all_of(id_vars), names_to = "sample", values_to = "count") |>
+    mutate(CRISPRType = "CRISPRa"),
+  pivot_longer(mutate(CRISPRiCountsA20, gID = as.character(gID)),
+               -all_of(id_vars), names_to = "sample", values_to = "count") |>
+    mutate(CRISPRType = "CRISPRi")
+) |>
+  mutate(
+    bin      = gsub("(.*)_(.*)_(.*)", "\\3", sample),
+    screen   = gsub("(.*)_(.*)_(.*)", "\\2", sample),
+    celltype = gsub("(.*)_(.*)_(.*)", "\\1", sample),
+    expt     = paste(celltype, CRISPRType, sep = "_")
+  ) |>
+  select(-sample)
 ```
 
 Run each method on each experiment from Ray et al. 
 ```{r start evaluation and run on TNFAIP3, results="hide", message = FALSE, warning=FALSE}
-#combine CD69 metrics 
-# Pearson's r between replicates ## metricsBoth will contain all our evaluation metrics
-metricsBoth = 
-  data.frame(method=c("MAUDE","logHivsLow","logVsUnsorted"), metric="r",which="replicate_correl",
-             value=c(cor(guideLevelStatsCastCD69$s1[!guideLevelStatsCastCD69$NT],
-                         guideLevelStatsCastCD69$s2[!guideLevelStatsCastCD69$NT]), 
-                     cor(cd69OriginalResults$l2fc.hilo1[!cd69OriginalResults$NT],
-                         cd69OriginalResults$l2fc.hilo2[!cd69OriginalResults$NT]),
-                     cor(cd69OriginalResults$l2fc.vsbg1[!cd69OriginalResults$NT],
-                         cd69OriginalResults$l2fc.vsbg2[!cd69OriginalResults$NT])),
-             sig=c(cor.test(guideLevelStatsCastCD69$s1[!guideLevelStatsCastCD69$NT],
-                            guideLevelStatsCastCD69$s2[!guideLevelStatsCastCD69$NT])$p.value, 
-                   cor.test(cd69OriginalResults$l2fc.hilo1[!cd69OriginalResults$NT],
-                            cd69OriginalResults$l2fc.hilo2[!cd69OriginalResults$NT])$p.value,
-                   cor.test(cd69OriginalResults$l2fc.vsbg1[!cd69OriginalResults$NT],
-                            cd69OriginalResults$l2fc.vsbg2[!cd69OriginalResults$NT])$p.value),
-             locus="CD69",type="CRISPRa",celltype="Jurkat",stringsAsFactors = FALSE)
+# combine CD69 metrics
+# Pearson's r between replicates — metricsBoth will contain all our evaluation metrics
+cd69_non_nt <- filter(guideLevelStatsCastCD69, !NT)
+metricsBoth <- tibble(
+  method = c("MAUDE", "logHivsLow", "logVsUnsorted"),
+  metric = "r",
+  which  = "replicate_correl",
+  value  = c(
+    cor(cd69_non_nt$s1, cd69_non_nt$s2),
+    cor(cd69OriginalResults$l2fc.hilo1[!cd69OriginalResults$NT],
+        cd69OriginalResults$l2fc.hilo2[!cd69OriginalResults$NT]),
+    cor(cd69OriginalResults$l2fc.vsbg1[!cd69OriginalResults$NT],
+        cd69OriginalResults$l2fc.vsbg2[!cd69OriginalResults$NT])
+  ),
+  sig = c(
+    cor.test(cd69_non_nt$s1, cd69_non_nt$s2)$p.value,
+    cor.test(cd69OriginalResults$l2fc.hilo1[!cd69OriginalResults$NT],
+             cd69OriginalResults$l2fc.hilo2[!cd69OriginalResults$NT])$p.value,
+    cor.test(cd69OriginalResults$l2fc.vsbg1[!cd69OriginalResults$NT],
+             cd69OriginalResults$l2fc.vsbg2[!cd69OriginalResults$NT])$p.value
+  ),
+  locus    = "CD69",
+  type     = "CRISPRa",
+  celltype = "Jurkat"
+)
 
-allResultsBoth = allResults; #combined results (significance, effect sizes) for CD69 and A20 screens
-for (e in unique(binFractionsA20$expt)){
-  curCelltype = gsub("(.*)_(.*)", "\\1", e);
-  curtype = gsub("(.*)_(.*)", "\\2", e);
-  curA20CountData = unique(A20CountData[A20CountData$expt==e,
-                                        c("seq","pos", "NT","gID","count","screen","bin")])
-  curA20CountDataTotals = cast(curA20CountData, screen +bin~ ., fun.aggregate = sum, value="count")
-  names(curA20CountDataTotals)[3] = "total";
-  curA20CountData = merge(curA20CountData, curA20CountDataTotals, by=c("screen","bin"))
-  curA20CountData$CPM = curA20CountData$count/curA20CountData$total * 1E6;
-  curCPMMat = cast(curA20CountData, seq + NT + gID + screen + pos ~ bin, value="CPM")
-  curCPMMat$l2fc_hilo = log2((1+curCPMMat$F)/(1+curCPMMat$A))
-  if(curtype=="CRISRPi"){
-    curCPMMat$l2fc_vsbg = log2((1+curCPMMat$NS)/(1+curCPMMat$A))
-  }else{ #CRISPRa
-    curCPMMat$l2fc_vsbg = log2((1+curCPMMat$F)/(1+curCPMMat$NS))
-  }
-  curBins = as.data.frame(melt(binFractionsA20[binFractionsA20$expt==e,], 
-                               id.vars = c("celltype","screen","CRISPRType","expt")))
-  names(curBins)[ncol(curBins) - (1:0)] = c("Bin","fraction")
-  curBins2 = data.frame();
-  for (s in unique(curBins$screen)){
-    curBins3 = makeBinModel(curBins[curBins$screen==s,c("Bin","fraction")])
-    curBins3$screen = s;
-    curBins2 = rbind(curBins2, curBins3)
-  }
-  curBins2$Bin = as.character(curBins2$Bin);
-  curCountMat = cast(curA20CountData, seq + NT + gID +pos + screen ~ bin, value="count")
-  guideLevelStats = findGuideHitsAllScreens(experiments = unique(curCountMat["screen"]), 
-                                            countDataFrame = curCountMat, binStats = curBins2, 
-                                            sortBins = c("A","B","C","D","E","F"), unsortedBin = "NS", 
-                                            negativeControl="NT")
-  
-  guideLevelStatsCast = cast(guideLevelStats, gID + pos+NT ~ screen, value="Z")
-  #names(guideLevelStatsCast)[4:ncol(guideLevelStatsCast)]=sprintf("s%i", 1:(ncol(guideLevelStatsCast)-3))
-  
-  maudeZs = guideLevelStatsCast;
-  
-  guideLevelStatsCast$significance = apply(maudeZs[unique(curA20CountData$screen)],1, combineZStouffer)
-  guideLevelStatsCast$metric=apply(maudeZs[unique(curA20CountData$screen)],1, mean)
-  guideLevelStatsCast$method = "MAUDE"
-  
+allResultsBoth <- allResults  # combined results for CD69 and A20 screens
+
+for (e in unique(binFractionsA20$expt)) {
+  curCelltype <- gsub("(.*)_(.*)", "\\1", e)
+  curtype     <- gsub("(.*)_(.*)", "\\2", e)
+
+  curA20CountData <- A20CountData |>
+    filter(expt == e) |>
+    distinct(seq, pos, NT, gID, count, screen, bin)
+
+  # compute CPM
+  curA20CountData <- curA20CountData |>
+    group_by(screen, bin) |>
+    mutate(CPM = count / sum(count) * 1e6) |>
+    ungroup()
+
+  curCPMMat <- curA20CountData |>
+    pivot_wider(
+      id_cols     = c(seq, NT, gID, screen, pos),
+      names_from  = bin,
+      values_from = CPM
+    ) |>
+    mutate(
+      l2fc_hilo = log2((1 + F) / (1 + A)),
+      l2fc_vsbg = if (curtype == "CRISRPi") {
+        log2((1 + NS) / (1 + A))
+      } else {
+        log2((1 + F) / (1 + NS))
+      }
+    )
+
+  # build bin model per screen
+  curBins <- binFractionsA20 |>
+    filter(expt == e) |>
+    pivot_longer(
+      cols      = -c(celltype, screen, CRISPRType, expt),
+      names_to  = "Bin",
+      values_to = "fraction"
+    )
+
+  curBins2 <- curBins |>
+    group_by(screen) |>
+    group_modify(~ makeBinModel(.x[c("Bin", "fraction")])) |>
+    ungroup() |>
+    mutate(Bin = as.character(Bin))
+
+  curCountMat <- curA20CountData |>
+    pivot_wider(
+      id_cols     = c(seq, NT, gID, pos, screen),
+      names_from  = bin,
+      values_from = count
+    )
+
+  guideLevelStats <- findGuideHitsAllScreens(
+    experiments    = distinct(curCountMat, screen),
+    countDataFrame = curCountMat,
+    binStats       = curBins2,
+    sortBins       = c("A", "B", "C", "D", "E", "F"),
+    unsortedBin    = "NS",
+    negativeControl = "NT"
+  )
+
+  maudeZs <- guideLevelStats |>
+    pivot_wider(
+      id_cols    = c(gID, pos, NT),
+      names_from = screen,
+      values_from = Z
+    )
+
+  sampleNames <- unique(curA20CountData$screen)
+
+  guideLevelStatsCast <- maudeZs |>
+    mutate(
+      significance = apply(pick(all_of(sampleNames)), 1, combineZStouffer),
+      metric       = rowMeans(pick(all_of(sampleNames))),
+      method       = "MAUDE"
+    )
+
   ### EdgeR
-  library(edgeR)
-  x= cast(unique(curA20CountData[curA20CountData$bin %in% c("A","F"), c("bin","gID","screen","count")]), gID ~ screen + bin, value="count")
-  row.names(x) = x$gID; x$gID=NULL;
-  x=as.matrix(x)
-  group = grepl("_F",colnames(x))+1
-  group <- factor(group)
-  y <- DGEList(counts=x,group=group)
-  y <- calcNormFactors(y)
-  design <- model.matrix(~group)
-  y <- estimateDisp(y,design)
-  #To perform likelihood ratio tests:
-  fit <- glmFit(y,design)
-  lrt <- glmLRT(fit,coef=2)
-  edgeRGuideLevel = topTags(lrt, n=nrow(x))@.Data[[1]]
-  
-  edgeRGuideLevel$gID = row.names(edgeRGuideLevel);
-  edgeRGuideLevel$metric = edgeRGuideLevel$logFC;
-  edgeRGuideLevel$significance = -log(edgeRGuideLevel$PValue);
-  edgeRGuideLevel$method="edgeR";
-  
-  ### DEseq
-  library(DESeq2)
-  deseqGroups = data.frame(bin=group);
-  row.names(deseqGroups) = colnames(x);
-  dds <- DESeqDataSetFromMatrix(countData = x,colData = deseqGroups, design= ~ bin)
+  x_edger <- curA20CountData |>
+    filter(bin %in% c("A", "F")) |>
+    distinct(bin, gID, screen, count) |>
+    pivot_wider(
+      id_cols     = gID,
+      names_from  = c(screen, bin),
+      values_from = count
+    ) |>
+    column_to_rownames("gID") |>
+    as.matrix()
+
+  group_edger <- factor(grepl("_F", colnames(x_edger)) + 1)
+  y      <- DGEList(counts = x_edger, group = group_edger)
+  y      <- calcNormFactors(y)
+  design <- model.matrix(~group_edger)
+  y      <- estimateDisp(y, design)
+  fit    <- glmFit(y, design)
+  lrt    <- glmLRT(fit, coef = 2)
+
+  edgeRGuideLevel <- topTags(lrt, n = nrow(x_edger))@.Data[[1]] |>
+    rownames_to_column("gID") |>
+    mutate(metric = logFC, significance = -log(PValue), method = "edgeR")
+
+  ### DESeq2
+  deseqGroups <- data.frame(bin = group_edger, row.names = colnames(x_edger))
+  dds <- DESeqDataSetFromMatrix(countData = x_edger, colData = deseqGroups, design = ~bin)
   dds <- DESeq(dds)
-  #resultsNames(dds) # lists the coefficients
-  res <- results(dds, name=resultsNames(dds)[2])
-  stopifnot(resultsNames(dds)[1]=="Intercept")
-  deseqGuideLevel = as.data.frame(res@listData)
-  deseqGuideLevel$gID =res@rownames;
-  deseqGuideLevel$metric = deseqGuideLevel$log2FoldChange;
-  deseqGuideLevel$significance = -log(deseqGuideLevel$pvalue);
-  deseqGuideLevel$method="DESeq2";
-  
-  curLRHiLow = cast(unique(curCPMMat[c("gID","NT","screen","l2fc_hilo")]), gID + NT ~ screen, value="l2fc_hilo")
-  curLRVsBG = cast(unique(curCPMMat[c("gID","NT","screen","l2fc_vsbg")]), gID + NT ~ screen, value="l2fc_vsbg")
-  numSamples = ncol(curLRHiLow)-2;
-  sampleNames = unique(curCPMMat$screen)
-  
-  curLRVsBG$significance = apply(curLRVsBG[3:(numSamples+2)], MARGIN = 1, FUN = mean);
-  curLRVsBG$metric = apply(curLRVsBG[3:(numSamples+2)], MARGIN = 1, FUN = mean);
-  curLRVsBG$method="logVsUnsorted"
-  curLRHiLow$significance = apply(curLRHiLow[3:(numSamples+2)], MARGIN = 1, FUN = mean);
-  curLRHiLow$metric = apply(curLRHiLow[3:(numSamples+2)], MARGIN = 1, FUN = mean);
-  curLRHiLow$method="logHivsLow"
-  
-  #compile results for A20
-  curResults = rbind(unique(curLRHiLow[c("method","gID","significance","metric")]),
-                     unique(curLRVsBG[c("method","gID","significance","metric")]),
-                     deseqGuideLevel[c("method","gID","significance","metric")], 
-                     edgeRGuideLevel[c("method","gID","significance","metric")],
-                     unique(guideLevelStatsCast[c("method","gID","significance","metric")]))
-  
-  curResults = merge(curResults, unique(curCPMMat[c("gID","NT","pos")]), by="gID")
-  curResults = curResults[!is.na(curResults$pos) | curResults$NT,]
-  curResults$promoter  = grepl("TNFAIP3", curResults$gID) | 
-    (curResults$pos <= 138189439 & curResults$pos >= 138187040) # chr6:138188077-138188379;138187040
-  
-  #append the current results to all
-  curResults$locus ="TNFAIP3"
-  curResults$type =curtype
-  curResults$celltype =curCelltype
-  allResultsBoth = rbind(allResultsBoth, curResults);
-  
-  # (1) similarity between the effect sizes estimated per replicate, 
-  corLRHiLow = cor(curLRHiLow[!curLRHiLow$NT, 3:(3+numSamples-1)])
-  corLRVsBG = cor(curLRVsBG[!curLRVsBG$NT, 3:(3+numSamples-1)])
-  maudeZCors = cor(maudeZs[!maudeZs$NT, 4:ncol(maudeZs)])
-  
-  maudeCorP=1
-  maudeCorR=-1
-  corLRHiLowP=1
-  corLRHiLowR=-1
-  corLRVsBGP=1;
-  corLRVsBGR=-1
-  #select the best inter-replicate correlation for each of the three approaches for which this is possible
-  for(i in 1:(length(sampleNames)-1)){ 
-    for(j in (i+1):length(sampleNames)){ 
-      curR = cor(maudeZs[!maudeZs$NT, sampleNames[i]], maudeZs[!maudeZs$NT, sampleNames[j]])
-      curP = cor.test(maudeZs[!maudeZs$NT, sampleNames[i]], maudeZs[!maudeZs$NT, sampleNames[j]])$p.value
-      if (maudeCorR < curR){
-        maudeCorR = curR;
-        maudeCorP = curP;
-      }
-      curR = cor(curLRVsBG[!curLRVsBG$NT, sampleNames[i]], curLRVsBG[!curLRVsBG$NT, sampleNames[j]])
-      curP = cor.test(curLRVsBG[!curLRVsBG$NT, sampleNames[i]], 
-                      curLRVsBG[!curLRVsBG$NT, sampleNames[j]])$p.value
-      if (corLRVsBGR < curR){
-        corLRVsBGR = curR;
-        corLRVsBGP = curP;
-      }
-      curR = cor(curLRHiLow[!curLRHiLow$NT, sampleNames[i]], curLRHiLow[!curLRHiLow$NT, sampleNames[j]])
-      curP = cor.test(curLRHiLow[!curLRHiLow$NT, sampleNames[i]], 
-                      curLRHiLow[!curLRHiLow$NT, sampleNames[j]])$p.value
-      if (corLRHiLowR < curR){
-        corLRHiLowR = curR;
-        corLRHiLowP = curP;
+  stopifnot(resultsNames(dds)[1] == "Intercept")
+  res <- results(dds, name = resultsNames(dds)[2])
+
+  deseqGuideLevel <- as.data.frame(res@listData) |>
+    mutate(
+      gID          = res@rownames,
+      metric       = log2FoldChange,
+      significance = -log(pvalue),
+      method       = "DESeq2"
+    )
+
+  # log fold change methods: wide → compute mean across replicate columns
+  curLRHiLow <- curCPMMat |>
+    distinct(gID, NT, screen, l2fc_hilo) |>
+    pivot_wider(id_cols = c(gID, NT), names_from = screen, values_from = l2fc_hilo) |>
+    mutate(
+      significance = rowMeans(pick(all_of(sampleNames))),
+      metric       = rowMeans(pick(all_of(sampleNames))),
+      method       = "logHivsLow"
+    )
+
+  curLRVsBG <- curCPMMat |>
+    distinct(gID, NT, screen, l2fc_vsbg) |>
+    pivot_wider(id_cols = c(gID, NT), names_from = screen, values_from = l2fc_vsbg) |>
+    mutate(
+      significance = rowMeans(pick(all_of(sampleNames))),
+      metric       = rowMeans(pick(all_of(sampleNames))),
+      method       = "logVsUnsorted"
+    )
+
+  # compile results for A20
+  keep_cols_a20 <- c("method", "gID", "significance", "metric")
+  curResults <- bind_rows(
+    distinct(curLRHiLow, across(all_of(keep_cols_a20))),
+    distinct(curLRVsBG,  across(all_of(keep_cols_a20))),
+    select(deseqGuideLevel,    all_of(keep_cols_a20)),
+    select(edgeRGuideLevel,    all_of(keep_cols_a20)),
+    distinct(guideLevelStatsCast, across(all_of(keep_cols_a20)))
+  ) |>
+    left_join(distinct(curCPMMat, gID, NT, pos), by = "gID") |>
+    filter(!is.na(pos) | NT) |>
+    mutate(
+      promoter = grepl("TNFAIP3", gID) | (pos <= 138189439 & pos >= 138187040),
+      locus    = "TNFAIP3",
+      type     = curtype,
+      celltype = curCelltype
+    )
+
+  allResultsBoth <- bind_rows(allResultsBoth, curResults)
+
+  # (1) inter-replicate correlation — find the best pair
+  best_cor <- function(wide_df, cols) {
+    best_r <- -1; best_p <- 1
+    non_nt <- filter(wide_df, !NT)
+    for (i in seq_len(length(cols) - 1)) {
+      for (j in (i + 1):length(cols)) {
+        r <- cor(non_nt[[cols[i]]], non_nt[[cols[j]]])
+        p <- cor.test(non_nt[[cols[i]]], non_nt[[cols[j]]])$p.value
+        if (r > best_r) { best_r <- r; best_p <- p }
       }
     }
+    list(r = best_r, p = best_p)
   }
-  metricsBoth = rbind(metricsBoth, 
-                      data.frame(method=c("MAUDE","logHivsLow","logVsUnsorted"), 
-                                 metric="r",which="replicate_correl",
-                                 value=c(maudeCorR, corLRHiLowR, corLRVsBGR),
-                                 sig=c(maudeCorP, corLRHiLowP, corLRVsBGP), 
-                                 locus ="TNFAIP3", type =curtype, celltype =curCelltype, 
-                                 stringsAsFactors = FALSE))
+
+  bc_maude <- best_cor(maudeZs,   sampleNames)
+  bc_hilo  <- best_cor(curLRHiLow, sampleNames)
+  bc_vsbg  <- best_cor(curLRVsBG,  sampleNames)
+
+  metricsBoth <- bind_rows(metricsBoth, tibble(
+    method   = c("MAUDE", "logHivsLow", "logVsUnsorted"),
+    metric   = "r",
+    which    = "replicate_correl",
+    value    = c(bc_maude$r, bc_hilo$r, bc_vsbg$r),
+    sig      = c(bc_maude$p, bc_hilo$p, bc_vsbg$p),
+    locus    = "TNFAIP3",
+    type     = curtype,
+    celltype = curCelltype
+  ))
 }
 ```
 
 Here are some functions that I will make use of below.
 ```{r some useful functions}
-#Some useful functions
-ranksumROC = function(x,y,na.rm=TRUE,...){
-  if (na.rm){
-    x=na.rm(x);
-    y=na.rm(y);
+ranksumROC <- function(x, y, na.rm = TRUE, ...) {
+  if (na.rm) {
+    x <- x[!is.na(x)]
+    y <- y[!is.na(y)]
   }
-  curTest = wilcox.test(x,y,...);
-  curTest$AUROC = (curTest$statistic/length(x))/length(y)
-  return(curTest)
+  curTest        <- wilcox.test(x, y, ...)
+  curTest$AUROC  <- (curTest$statistic / length(x)) / length(y)
+  curTest
 }
-na.rm = function(x){ x[!is.na(x)]}
 ```
 
 ### Evaluation
 The inter-replicate correlations were calculated in the sections above and are stored in `metricsBoth`. Below, the two remaining metrics are calculated (distinguishing promoter vs other targeting guides, and adjacent vs randomly paired guides).
 ```{r evaluate methods part 2 and 3}
-# (1) similarity between the effect sizes estimated per replicate, 
-# (above)
-metricsBoth$significant= metricsBoth$sig < 0.01;
+# (1) similarity between the effect sizes estimated per replicate (above)
+metricsBoth <- mutate(metricsBoth, significant = sig < 0.01)
 
 # Other evaluation metrics
-allExpts = unique(allResultsBoth[c("celltype","locus","type")])
-for (ei in 1:nrow(allExpts)){
-  curCelltype = allExpts$celltype[ei]
-  curtype = allExpts$type[ei];
-  curLocus = allExpts$locus[ei];
-  
-  curResults = allResultsBoth[allResultsBoth$celltype==curCelltype & 
-                                allResultsBoth$type==curtype & allResultsBoth$locus==curLocus,]
-  for(m in unique(curResults$method)){
-    curData = curResults[curResults$method==m & !curResults$NT,]
-    
+allExpts <- distinct(allResultsBoth, celltype, locus, type)
+
+for (ei in seq_len(nrow(allExpts))) {
+  curCelltype <- allExpts$celltype[ei]
+  curtype     <- allExpts$type[ei]
+  curLocus    <- allExpts$locus[ei]
+
+  curResults <- allResultsBoth |>
+    filter(celltype == curCelltype, type == curtype, locus == curLocus)
+
+  for (m in unique(curResults$method)) {
+    curData <- curResults |>
+      filter(method == m, !NT) |>
+      arrange(pos)
+
     # (2) similarity in effect size between adjacent guides
-    curData = curData[order(curData$pos),]
-    guideEffectDistances = 
-      data.frame(method = m, random=FALSE, 
-                 difference = abs(curData$metric[2:nrow(curData)] - curData$metric[1:(nrow(curData)-1)]), 
-                 dist =abs(curData$pos[2:nrow(curData)] - curData$pos[1:(nrow(curData)-1)]), 
-                 stringsAsFactors = FALSE)
-    guideEffectDistances = guideEffectDistances[guideEffectDistances$dist < 100,]
-    guideEffectDistances$dist=NULL;
-    ### changed 10 in next line to 100 to make this more robust
-    curData = curData[sample(nrow(curData), size = nrow(curData)*100, replace = TRUE),]
-    guideEffectDistances = 
-      rbind(guideEffectDistances,
-            data.frame(method = m, random=TRUE,
-                       difference = abs(curData$metric[2:nrow(curData)] - 
-                                          curData$metric[1:(nrow(curData)-1)]), stringsAsFactors = FALSE));
+    guideEffectDistances <- tibble(
+      method     = m,
+      random     = FALSE,
+      difference = abs(diff(curData$metric)),
+      dist       = abs(diff(curData$pos))
+    ) |>
+      filter(dist < 100) |>
+      select(-dist)
+
+    ### changed 10 to 100 to make this more robust
+    curDataSampled <- curData[sample(nrow(curData), size = nrow(curData) * 100, replace = TRUE), ]
+    guideEffectDistances <- bind_rows(
+      guideEffectDistances,
+      tibble(
+        method     = m,
+        random     = TRUE,
+        difference = abs(diff(curDataSampled$metric))
+      )
+    )
+
     # random should have more different than adjacent
-    curRS = ranksumROC(guideEffectDistances$difference[guideEffectDistances$method==m &
-                                                         guideEffectDistances$random],
-                       guideEffectDistances$difference[guideEffectDistances$method==m &
-                                                         !guideEffectDistances$random]) 
-    metricsBoth = rbind(metricsBoth, data.frame(method=m, metric="AUROC-0.5",
-                                                which="adjacent_vs_random",value = curRS$AUROC-0.5,
-                                                locus=curLocus,celltype=curCelltype, type=curtype,
-                                                sig=curRS$p.value, significant = curRS$p.value < 0.01))
-    
-    # (3) ability to distinguish promoter-targeting guides from other guides. 
-    if (curtype=="CRISPRi" & !(m %in% c("edgeR","DESeq2"))){ 
+    curRS <- ranksumROC(
+      guideEffectDistances$difference[guideEffectDistances$random],
+      guideEffectDistances$difference[!guideEffectDistances$random]
+    )
+    metricsBoth <- bind_rows(metricsBoth, tibble(
+      method      = m, metric = "AUROC-0.5", which = "adjacent_vs_random",
+      value       = curRS$AUROC - 0.5, locus = curLocus,
+      celltype    = curCelltype, type = curtype,
+      sig         = curRS$p.value, significant = curRS$p.value < 0.01
+    ))
+
+    # (3) ability to distinguish promoter-targeting guides from other guides.
+    if (curtype == "CRISPRi" & !(m %in% c("edgeR", "DESeq2"))) {
       # edgeR and DESeq2 are reversed for CRISPRi
-      # non promoter should have higher effect than promoter (more -ve)
-      curRS = ranksumROC(curResults$significance[curResults$method==m & !curResults$NT &
-                                                   !curResults$promoter],
-                         curResults$significance[curResults$method==m & !curResults$NT &
-                                                   curResults$promoter]) 
-    }else{
+      # non-promoter should have higher effect than promoter (more -ve)
+      curRS <- ranksumROC(
+        curResults$significance[curResults$method == m & !curResults$NT & !curResults$promoter],
+        curResults$significance[curResults$method == m & !curResults$NT &  curResults$promoter]
+      )
+    } else {
       # promoter should have larger effect than non-promoter
-      curRS = ranksumROC(curResults$significance[curResults$method==m & !curResults$NT &
-                                                   curResults$promoter],
-                         curResults$significance[curResults$method==m & !curResults$NT &
-                                                   !curResults$promoter]) 
+      curRS <- ranksumROC(
+        curResults$significance[curResults$method == m & !curResults$NT &  curResults$promoter],
+        curResults$significance[curResults$method == m & !curResults$NT & !curResults$promoter]
+      )
     }
-    metricsBoth = rbind(metricsBoth, data.frame(method=m, metric="AUROC-0.5", which="promoter_vs_T",
-                                                value = curRS$AUROC-0.5, locus=curLocus, 
-                                                celltype=curCelltype, type=curtype, sig=curRS$p.value,
-                                                significant = curRS$p.value < 0.01))
+    metricsBoth <- bind_rows(metricsBoth, tibble(
+      method      = m, metric = "AUROC-0.5", which = "promoter_vs_T",
+      value       = curRS$AUROC - 0.5, locus = curLocus,
+      celltype    = curCelltype, type = curtype,
+      sig         = curRS$p.value, significant = curRS$p.value < 0.01
+    ))
   }
 }
 
-##compile all metrics; label the best in each test and whether any tests were significant (P<0.01)
-metricsBoth2 = metricsBoth;
-metricsBoth2$method = factor(as.character(metricsBoth2$method), 
-                             levels = c("logVsUnsorted","logHivsLow","DESeq2","edgeR","MAUDE"))
-metricsBoth2Best = cast(metricsBoth2, which + locus + type+celltype ~ ., value="value", 
-                        fun.aggregate = max)
-names(metricsBoth2Best)[ncol(metricsBoth2Best)] = "best"
-metricsBoth2 = merge(metricsBoth2, metricsBoth2Best, by = c("which","locus","type","celltype"))
-metricsBoth2AnySig = cast(metricsBoth2[colnames(metricsBoth2)!="value"], 
-                          which + locus + type+celltype ~ ., value="significant", fun.aggregate = any)
-names(metricsBoth2AnySig)[ncol(metricsBoth2AnySig)] = "anySig"
-metricsBoth2 = merge(metricsBoth2, metricsBoth2AnySig, by = c("which","locus","type","celltype"))
-metricsBoth2$isBest = metricsBoth2$value==metricsBoth2$best;
-metricsBoth2$isBestNA = metricsBoth2$isBest;
-metricsBoth2$isBestNA[!metricsBoth2$isBestNA]=NA;
-metricsBoth2$pctOfMax = metricsBoth2$value/metricsBoth2$best * 100;
+## compile all metrics; label the best in each test and whether any tests were significant (P<0.01)
+method_levels <- c("logVsUnsorted", "logHivsLow", "DESeq2", "edgeR", "MAUDE")
 
-#fill in NAs for edgeR and DESeq2 which cannot have inter-replicate correlations
-temp = metricsBoth2[metricsBoth2$metric=="r",]
-temp = temp[1:2,];
-temp$method = c("edgeR","DESeq2")
-temp$value=NA; temp$isBest=NA; temp$significant=FALSE; temp$pctOfMax=NA; temp$isBestNA=NA;
-metricsBoth2 = rbind(metricsBoth2, temp)
+metricsBoth2 <- metricsBoth |>
+  mutate(method = factor(as.character(method), levels = method_levels)) |>
+  group_by(which, locus, type, celltype) |>
+  mutate(
+    best    = max(value, na.rm = TRUE),
+    anySig  = any(significant)
+  ) |>
+  ungroup() |>
+  mutate(
+    isBest   = value == best,
+    isBestNA = if_else(isBest, TRUE, NA),
+    pctOfMax = value / best * 100
+  )
+
+# fill in NAs for edgeR and DESeq2 which cannot have inter-replicate correlations
+na_rows <- metricsBoth2 |>
+  dplyr::filter(metric == "r") |>
+  dplyr::slice(1:2) |>
+  dplyr::mutate(
+    method      = factor(c("edgeR", "DESeq2"), levels = method_levels),
+    value       = NA_real_,
+    isBest      = NA,
+    significant = FALSE,
+    pctOfMax    = NA_real_,
+    isBestNA    = NA
+  )
+metricsBoth2 <- dplyr::bind_rows(metricsBoth2, na_rows)
 ```
 
 Finally make the graph with all evaluation metrics as shown in the MAUDE paper. 
 ```{r make graph, fig.width=10, fig.height=6}
-#make the final evaluation graph
-p1 = ggplot(metricsBoth2[metricsBoth2$which=="adjacent_vs_random",], 
-            aes(x=method, fill=value, y=paste(locus,type,celltype))) + geom_tile() +
-  geom_text(data=metricsBoth2[metricsBoth2$which=="adjacent_vs_random" & metricsBoth2$anySig,],
-            aes(label="*",colour=isBestNA),show.legend = FALSE) +theme_bw() +
-  scale_fill_gradient2(high="red", low="blue", mid="black") + 
-  theme(legend.position="top", axis.text.x = element_text(hjust=1, angle=45), 
-        axis.title.y = element_blank())+scale_colour_manual(values = c("green"), na.value=NA) + 
-  scale_y_discrete(expand=c(0,0))+scale_x_discrete(expand=c(0,0))+ggtitle("Adjacent vs\nrandom guides");
-p2 = ggplot(metricsBoth2[metricsBoth2$which=="promoter_vs_T",], 
-            aes(x=method, fill=value, y=paste(locus,type,celltype))) + geom_tile() +
-  geom_text(data=metricsBoth2[metricsBoth2$which=="promoter_vs_T" & metricsBoth2$anySig,],
-            aes(label="*",colour=isBestNA),show.legend = FALSE) +theme_bw() +
-  scale_fill_gradient2(high="red", low="blue", mid="black") + 
-  theme(legend.position="top", axis.text.x = element_text(hjust=1, angle=45), 
-        axis.title.y = element_blank())+scale_colour_manual(values = c("green"), na.value=NA)+
-  scale_y_discrete(expand=c(0,0))+scale_x_discrete(expand=c(0,0))+
-  ggtitle("Promoter vs other\ntargeting guides");
-p3 = ggplot(metricsBoth2[metricsBoth2$which=="replicate_correl",], 
-            aes(x=method, fill=value, y=paste(locus,type,celltype))) + geom_tile() +
-  geom_text(data=metricsBoth2[metricsBoth2$which=="replicate_correl" & metricsBoth2$anySig,],
-            aes(label="*",colour=isBestNA),show.legend = FALSE) +theme_bw() +
-  scale_fill_gradient2(high="red", low="blue", mid="black") + 
-  theme(legend.position="top", axis.text.x = element_text(hjust=1, angle=45), 
-        axis.title.y = element_blank())+scale_colour_manual(values = c("green"), na.value=NA)+
-  scale_y_discrete(expand=c(0,0))+scale_x_discrete(expand=c(0,0))+ggtitle("Replicate\ncorrelations");
-g= plot_grid(p1,p2,p3, align = 'h', nrow = 1); print(g)
+make_tile_plot <- function(data, title_str) {
+  ggplot(data, aes(x = method, fill = value, y = paste(locus, type, celltype))) +
+    geom_tile() +
+    geom_text(
+      data = filter(data, anySig),
+      aes(label = "*", colour = isBestNA), show.legend = FALSE
+    ) +
+    scale_fill_gradient2(high = "red", low = "blue", mid = "black") +
+    scale_colour_manual(values = c("green"), na.value = NA) +
+    scale_y_discrete(expand = c(0, 0)) +
+    scale_x_discrete(expand = c(0, 0)) +
+    theme_bw() +
+    theme(
+      legend.position = "top",
+      axis.text.x     = element_text(hjust = 1, angle = 45),
+      axis.title.y    = element_blank()
+    ) +
+    ggtitle(title_str)
+}
+
+p1 <- make_tile_plot(filter(metricsBoth2, which == "adjacent_vs_random"), "Adjacent vs\nrandom guides")
+p2 <- make_tile_plot(filter(metricsBoth2, which == "promoter_vs_T"),      "Promoter vs other\ntargeting guides")
+p3 <- make_tile_plot(filter(metricsBoth2, which == "replicate_correl"),   "Replicate\ncorrelations")
+
+plot_grid(p1, p2, p3, align = "h", nrow = 1)
 ```
 
 ### Session info
 ```{r session info}
 sessionInfo()
 ```
-

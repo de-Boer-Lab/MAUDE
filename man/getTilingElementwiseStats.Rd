@@ -31,7 +31,7 @@ getTilingElementwiseStats(
 
 \item{minGuides}{the minimum number of guides in a window required for a test (defaults to 5)}
 
-\item{negativeControl}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"}
+\item{negativeControl}{the name in normNBSummaries containing a logical representing whether or not the guide is non-Targeting (i.e. a negative control guide).  Defaults to "NT"#'}
 
 \item{...}{other parameters for getZScalesWithNTGuides}
 }

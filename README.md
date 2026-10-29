@@ -98,22 +98,32 @@ Here, `$sample` is the sample name, with `$sample.fastq.gz` the corresponding fa
 
 To turn this into a format that can easily be used for a MAUDE analysis, you can input the data using something like the following:
 ```R
-#here, allSamples is a data.frame containing one sample per row, with columns including ID, expt, and Bin.  There should be one file for every row in allSamples
-allData = data.frame();
-for (i in 1:nrow(allSamples)){
-  curData = read.table(file=sprintf("%s/%s.counts",inDir,allSamples$ID[i]), quote="", header = F, row.names = NULL, stringsAsFactors = F)
-  names(curData) = c("count","guideID");
-  curData = curData[curData$gID!="*",] # remove unmapped counts
-  curData$ID = allSamples$ID[i];
-  curData$expt = allSamples$expt[i];
-  curData$Bin = allSamples$Bin[i];
-  allData = rbind(allData, curData)
-}
-#now you have the data in a data.frame that can be reshaped to a MAUDE-compatible format:
-library(reshape)
-allDataCounts = as.data.frame(cast(allData, expt + guideID ~ Bin, value="count"));
-allDataCounts[is.na(allDataCounts)]=0; # fill in 0s for guides not observed at all
-#now you just need to label the non-targeting guides and this will be in the correct format
+library(tidyverse)
+
+# here, allSamples is a tibble/data.frame containing one sample per row, with columns
+# including ID, expt, and Bin. There should be one file for every row in allSamples
+allData <- allSamples |>
+  dplyr::select(ID, expt, Bin) |>
+  purrr::pmap_dfr(function(ID, expt, Bin) {
+    readr::read_table(
+      file      = sprintf("%s/%s.counts", inDir, ID),
+      col_names = c("count", "guideID"),
+      col_types = "ic"
+    ) |>
+      dplyr::mutate(ID = ID, expt = expt, Bin = Bin)
+  }) |>
+  dplyr::filter(guideID != "*")   # remove unmapped counts
+
+# now reshape to a MAUDE-compatible format
+allDataCounts <- allData |>
+  tidyr::pivot_wider(
+    id_cols     = c(expt, guideID),
+    names_from  = Bin,
+    values_from = count,
+    values_fill = 0          # fill in 0s for guides not observed at all
+  )
+
+# now you just need to label the non-targeting guides and this will be in the correct format
 ```
 
 ## Encountering problems
