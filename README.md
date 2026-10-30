@@ -61,9 +61,9 @@ Right now we have three main requirements:
 
 ## Tutorials
 We provide two tutorials on how to run a MAUDE analysis in R here:
-1. [Re-analysis of CD69 screen data](doc/CD69_tutorial.html)
-2. [Analysis of a simulated screen](doc/simulated_data_tutorial.html)
-3. [Analysis of a CRISPR base editor non-coding mutation screen](doc/BACH2_base_editor_screen.html)
+1. [Re-analysis of CD69 screen data](https://de-boer-lab.github.io/MAUDE/doc/CD69_tutorial.html)
+2. [Analysis of a simulated screen](https://de-boer-lab.github.io/MAUDE/doc/simulated_data_tutorial.html)
+3. [Analysis of a CRISPR base editor non-coding mutation screen](https://de-boer-lab.github.io/MAUDE/doc/BACH2_base_editor_screen.html)
 
 For additional examples, see the [script for evaluating and comparing sorting-based CRISPR screen analysis methods.](https://de-boer-lab.github.io/MAUDE/Evaluation/method_evaluation.html)
 
